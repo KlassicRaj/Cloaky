@@ -4,7 +4,7 @@ services:
     container_name: cloaky-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: visitor_routing
+      POSTGRES_DB: cloaky
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d visitor_routing"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloaky"]
       interval: 5s
       timeout: 5s
       retries: 5

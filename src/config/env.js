@@ -1,5 +1,11 @@
 const { z } = require("zod");
-require("dotenv").config();
+const path = require("node:path");
+const isTestEnvironment = process.env.NODE_ENV === "test";
+
+require("dotenv").config({
+    path: path.resolve(process.cwd(), isTestEnvironment ? ".env.test" : ".env"),
+    override: isTestEnvironment,
+});
 
 const envSchema = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
