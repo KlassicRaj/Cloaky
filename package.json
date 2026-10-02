@@ -7,7 +7,11 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:migrate": "knex --knexfile knexfile.js migrate:latest",
+    "db:rollback": "knex --knexfile knexfile.js migrate:rollback",
+    "db:status": "knex --knexfile knexfile.js migrate:list",
+    "db:create": "knex --knexfile knexfile.js migrate:make"
   },
   "repository": {
     "type": "git",
