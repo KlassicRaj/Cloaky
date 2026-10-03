@@ -188,6 +188,49 @@ describe("projectRepository", () => {
 		});
 	});
 
+	it("inserts a one-element allowed_origins array as valid JSONB", async () => {
+		const user = await createUser();
+		const project = await createProject(user, {
+			allowed_origins: ["http://localhost:5500"],
+		});
+		const readBack = await projectRepository.findById(project.id);
+		expect(readBack.allowed_origins).toEqual(["http://localhost:5500"]);
+	});
+
+	it.each([
+		[["http://localhost:5500"]],
+		[["https://www.youtube.com", "http://localhost:5500"]],
+	])("stores allowed origins as a JSON array", async (allowedOrigins) => {
+		const user = await createUser();
+		const project = await createProject(user, { allowed_origins: allowedOrigins });
+		const readBack = await projectRepository.findById(project.id);
+
+		expect(readBack.allowed_origins).toEqual(allowedOrigins);
+		expect(Array.isArray(readBack.allowed_origins)).toBe(true);
+	});
+
+	it("updates allowed origins as a JSON array and supports an empty array", async () => {
+		const user = await createUser();
+		const project = await createProject(user, {
+			allowed_origins: ["http://localhost:5500"],
+		});
+
+		const updatedProject = await projectRepository.updateById(project.id, {
+			allowed_origins: ["https://www.youtube.com", "http://localhost:5500"],
+		});
+		expect(updatedProject.allowed_origins).toEqual([
+			"https://www.youtube.com",
+			"http://localhost:5500",
+		]);
+		expect(Array.isArray(updatedProject.allowed_origins)).toBe(true);
+
+		const clearedProject = await projectRepository.updateById(project.id, {
+			allowed_origins: [],
+		});
+		expect(clearedProject.allowed_origins).toEqual([]);
+		expect(Array.isArray(clearedProject.allowed_origins)).toBe(true);
+	});
+
 	it("lists projects for their owning user", async () => {
 		const user = await createUser();
 		const otherUser = await createUser();

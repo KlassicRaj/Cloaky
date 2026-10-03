@@ -1,4 +1,7 @@
-const { validateDestinationUrl } = require("../validation/urlValidation");
+const {
+    addFullscreenPromptParameter,
+    validateDestinationUrl,
+} = require("../validation/urlValidation");
 
 function clientInfoFromRequest(req) {
     const acceptLanguage = req.get("Accept-Language");
@@ -31,7 +34,10 @@ function createRedirectController({ evaluationService }) {
             if (decision?.matched === true && decision.action === "redirect") {
                 const destination = validateDestinationUrl(decision.destinationUrl);
                 if (destination.success) {
-                    return res.status(302).setHeader("Location", destination.data).end();
+                    const location = decision.fullscreenMode === "prompt"
+                        ? addFullscreenPromptParameter(destination.data).data
+                        : destination.data;
+                    return res.status(302).setHeader("Location", location).end();
                 }
             }
 

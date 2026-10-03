@@ -184,45 +184,15 @@ describe("EvaluationService", () => {
             .toEqual({ country: null, region: null, city: null });
     });
 
-    it("uses null browserGeo when it is missing", async () => {
+    it("does not pass legacy browser geolocation to the RuleEngine", async () => {
         const dependencies = makeDependencies();
 
         await createService(dependencies).evaluate({
             projectKey: "public-project-key",
-            clientInfo: {},
+            clientInfo: { browserGeo: { latitude: 45.5, longitude: -90, accuracy: 12 } },
         });
 
         expect(dependencies.ruleEngine.evaluateRules.mock.calls[0][0].browserGeo).toBeNull();
-    });
-
-    it("includes valid browser geolocation", async () => {
-        const dependencies = makeDependencies();
-
-        await createService(dependencies).evaluate({
-            projectKey: "public-project-key",
-            clientInfo: { browserGeo: { latitude: "45.5", longitude: -90, accuracy: 12 } },
-        });
-
-        expect(dependencies.ruleEngine.evaluateRules.mock.calls[0][0].browserGeo).toEqual({
-            latitude: 45.5,
-            longitude: -90,
-            accuracy: 12,
-        });
-    });
-
-    it("nulls invalid browser geolocation values", async () => {
-        const dependencies = makeDependencies();
-
-        await createService(dependencies).evaluate({
-            projectKey: "public-project-key",
-            clientInfo: { browserGeo: { latitude: 91, longitude: "bad", accuracy: 0 } },
-        });
-
-        expect(dependencies.ruleEngine.evaluateRules.mock.calls[0][0].browserGeo).toEqual({
-            latitude: null,
-            longitude: null,
-            accuracy: null,
-        });
     });
 
     it("uses the server-derived IP instead of clientInfo.ip", async () => {

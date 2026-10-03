@@ -6,9 +6,6 @@ const { ruleDestinationSchema, validateDestinationUrl } = require("./urlValidati
 const numericFields = new Set([
     "screen_width",
     "screen_height",
-    "browser_geo_latitude",
-    "browser_geo_longitude",
-    "browser_geo_accuracy",
 ]);
 const stringOperators = new Set(["contains", "starts_with"]);
 const numericOperators = new Set(["greater_than", "less_than"]);
@@ -40,14 +37,8 @@ function conditionValueIssue(condition) {
     if (numericOperators.has(operator)) {
         if (!numericFields.has(field)) return "Numeric comparisons require a numeric field";
         if (typeof value !== "number" || !Number.isFinite(value)) return "Condition value must be a finite number";
-        if (field === "screen_width" || field === "screen_height" || field === "browser_geo_accuracy") {
+        if (field === "screen_width" || field === "screen_height") {
             if (value <= 0) return "Condition value must be positive";
-        }
-        if (field === "browser_geo_latitude" && (value < -90 || value > 90)) {
-            return "Latitude condition must be between -90 and 90";
-        }
-        if (field === "browser_geo_longitude" && (value < -180 || value > 180)) {
-            return "Longitude condition must be between -180 and 180";
         }
         return null;
     }
@@ -62,14 +53,8 @@ function conditionValueIssue(condition) {
         if (typeof value !== "number" || !Number.isFinite(value)) {
             return "Numeric condition fields require a finite number";
         }
-        if ((field === "screen_width" || field === "screen_height" || field === "browser_geo_accuracy") && value <= 0) {
+        if ((field === "screen_width" || field === "screen_height") && value <= 0) {
             return "Condition value must be positive";
-        }
-        if (field === "browser_geo_latitude" && (value < -90 || value > 90)) {
-            return "Latitude condition must be between -90 and 90";
-        }
-        if (field === "browser_geo_longitude" && (value < -180 || value > 180)) {
-            return "Longitude condition must be between -180 and 180";
         }
         if (stringOperators.has(operator)) return "String operators cannot be used with numeric fields";
         return null;

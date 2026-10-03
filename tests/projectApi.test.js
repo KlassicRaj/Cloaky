@@ -261,18 +261,34 @@ describe("Project API", () => {
         const createdProjectResponse = await request(app).post("/api/projects").send({
             name: "Cascade integration project",
             projectKey,
-            allowedOrigins: [],
+            allowedOrigins: ["https://www.youtube.com", "http://localhost:5500"],
             enabled: true,
         }).expect(201);
+        expect(createdProjectResponse.body.allowedOrigins).toEqual([
+            "https://www.youtube.com",
+            "http://localhost:5500",
+        ]);
+        expect(Array.isArray(createdProjectResponse.body.allowedOrigins)).toBe(true);
         cascadeProject = await projectRepository.findById(createdProjectResponse.body.id);
         expect(cascadeProject.user_id).toBe(cascadeUser.id);
+        expect(cascadeProject.allowed_origins).toEqual([
+            "https://www.youtube.com",
+            "http://localhost:5500",
+        ]);
+        expect(Array.isArray(cascadeProject.allowed_origins)).toBe(true);
         expect(configCacheService.get(projectKey)).toBeUndefined();
 
         configCacheService.set(projectKey, { project: cascadeProject, rules: [] });
         await request(app)
             .patch(`/api/projects/${cascadeProject.id}`)
-            .send({ name: "Renamed cascade project" })
+            .send({
+                name: "Renamed cascade project",
+                allowedOrigins: ["http://localhost:5500"],
+            })
             .expect(200);
+        cascadeProject = await projectRepository.findById(cascadeProject.id);
+        expect(cascadeProject.allowed_origins).toEqual(["http://localhost:5500"]);
+        expect(Array.isArray(cascadeProject.allowed_origins)).toBe(true);
         expect(configCacheService.get(projectKey)).toBeUndefined();
 
         const rule = await ruleRepository.create({

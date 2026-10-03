@@ -13,6 +13,7 @@ const FIELD_GETTERS = Object.freeze({
     timezone: (visitor) => visitor?.timezone,
     screen_width: (visitor) => visitor?.screen?.width,
     screen_height: (visitor) => visitor?.screen?.height,
+    // Retained for legacy stored rules; public rule validation no longer accepts these fields.
     browser_geo_latitude: (visitor) => visitor?.browserGeo?.latitude,
     browser_geo_longitude: (visitor) => visitor?.browserGeo?.longitude,
     browser_geo_accuracy: (visitor) => visitor?.browserGeo?.accuracy,

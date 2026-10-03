@@ -29,6 +29,9 @@ const { createAuthService } = require("./services/authService");
 const configCacheService = require("./services/configCacheService");
 const { createEventService } = require("./services/eventService");
 const { createEventsRouter } = require("./routes/events");
+const { createDashboardRouter } = require("./routes/dashboard");
+const { createTestRulesRouter } = require("./routes/testRules");
+const { createRuleTestingService } = require("./services/ruleTestingService");
 
 const eventLoggingService = createEventLoggingService({ eventRepository });
 const sessionService = createSessionService({ secret: env.SESSION_SECRET });
@@ -53,6 +56,7 @@ function createApp({
     evaluationService,
     projectRepository: projectRepositoryInstance = projectRepository,
     projectService,
+    ruleTestingService,
     eventService,
     eventRepository: eventRepositoryInstance = eventRepository,
     ruleService,
@@ -83,6 +87,11 @@ function createApp({
         userRepository: userRepositoryInstance,
         configCacheService,
     });
+    const configuredRuleTestingService = ruleTestingService || createRuleTestingService({
+        projectService: configuredProjectService,
+        ruleRepository,
+        ruleEngine: { evaluateRules },
+    });
     const configuredEventService = eventService || createEventService({
         projectService: configuredProjectService,
         eventRepository: eventRepositoryInstance,
@@ -106,6 +115,7 @@ function createApp({
 
     app.use(express.json());
     app.use(healthRouter);
+    app.use(createDashboardRouter());
     app.use("/api/auth", createAuthRouter({
         authService: configuredAuthService,
         sessionService: configuredSessionService,
@@ -116,6 +126,9 @@ function createApp({
     app.use("/api/projects", createProjectsRouter({ projectService: configuredProjectService }));
     app.use("/api/projects", createEventsRouter({ eventService: configuredEventService }));
     app.use("/api/projects", createRulesManagementRouter({ ruleService: configuredRuleService }));
+    app.use("/api/projects", createTestRulesRouter({
+        ruleTestingService: configuredRuleTestingService,
+    }));
     app.use(sdkRouter);
     app.use(createRedirectRouter({ evaluationService: configuredEvaluationService }));
     app.use("/api/v1", createEvaluateRouter({

@@ -6,29 +6,6 @@ function emptyGeo() {
     return { country: null, region: null, city: null };
 }
 
-function normalizeBrowserGeo(browserGeo) {
-    if (!browserGeo || typeof browserGeo !== "object" || Array.isArray(browserGeo)) {
-        return null;
-    }
-
-    const normalized = normalizeVisitor({ browserGeo }).browserGeo;
-    if (!normalized) {
-        return null;
-    }
-
-    return {
-        latitude: normalized.latitude !== null && normalized.latitude >= -90 && normalized.latitude <= 90
-            ? normalized.latitude
-            : null,
-        longitude: normalized.longitude !== null && normalized.longitude >= -180 && normalized.longitude <= 180
-            ? normalized.longitude
-            : null,
-        accuracy: normalized.accuracy !== null && normalized.accuracy > 0
-            ? normalized.accuracy
-            : null,
-    };
-}
-
 function noActionForMatch(ruleId, reason) {
     return createDecision({
         matched: true,
@@ -188,7 +165,6 @@ function createEvaluationService({
             ...normalizedClientInfo,
             ip: clientIp,
             geo,
-            browserGeo: normalizeBrowserGeo(clientInfo?.browserGeo),
         });
 
         const decision = sanitizeDecision(await ruleEngine.evaluateRules(visitor, rules));

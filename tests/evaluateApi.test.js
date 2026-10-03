@@ -140,9 +140,7 @@ describe("POST /api/v1/evaluate", () => {
     it.each([
         ["screen width", { screen: { width: 0 } }],
         ["screen height", { screen: { height: -1 } }],
-        ["latitude", { browserGeo: { latitude: 90.1 } }],
-        ["longitude", { browserGeo: { longitude: -180.1 } }],
-        ["accuracy", { browserGeo: { accuracy: 0 } }],
+        ["browser geolocation", { browserGeo: { latitude: 45, longitude: -90, accuracy: 5 } }],
     ])("rejects invalid %s", async (_field, values) => {
         const { app } = createTestApp();
 

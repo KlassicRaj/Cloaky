@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="same-origin">
+    <title>Project · Visitor Routing</title>
+    <link rel="stylesheet" href="/assets/css/app.css">
+    <script src="/assets/js/api.js" defer></script>
+    <script src="/assets/js/rule-builder.js" defer></script>
+    <script src="/assets/js/project.js" defer></script>
+    <script src="/assets/js/test-rules.js" defer></script>
+</head>
+<body class="page">
+    <header class="topbar">
+        <a class="brand" href="/dashboard">Visitor Routing</a>
+        <a class="button-link" href="/dashboard">All projects</a>
+    </header>
+    <main class="content">
+        <p><a href="/dashboard">← Projects</a></p>
+        <p id="project-status-message" class="message" role="status">Loading project…</p>
+        <section id="project-content" hidden>
+            <nav class="project-navigation" aria-label="Project sections">
+                <a href="#project-overview">Overview</a>
+                <a href="#rules-section">Rules</a>
+                <a href="#test-rules-section">Test Rules</a>
+                <a href="#events-section">Events</a>
+            </nav>
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Project</p>
+                    <h1 id="project-name"></h1>
+                </div>
+                <span id="project-enabled" class="status-badge"></span>
+            </div>
+            <section id="project-overview" class="panel details-panel" aria-labelledby="details-title">
+                <h2 id="details-title">Details</h2>
+                <dl class="details-list">
+                    <dt>Project key</dt>
+                    <dd id="project-key"></dd>
+                    <dt>Project ID</dt>
+                    <dd id="project-id"></dd>
+                    <dt>Allowed origins</dt>
+                    <dd><ul id="project-origins" class="origin-list"></ul></dd>
+                </dl>
+            </section>
+            <section id="rules-section" class="dashboard-section" aria-labelledby="rules-heading">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Configuration</p>
+                        <h2 id="rules-heading">Rules</h2>
+                    </div>
+                    <button id="create-rule-button" type="button">+ Create rule</button>
+                </div>
+                <p class="muted">Enabled rules are evaluated in ascending priority order. The first matching enabled rule wins.</p>
+                <p id="rules-message" class="message" role="status" hidden></p>
+                <div id="rules-list" class="rule-list" aria-live="polite">
+                    <p class="panel empty-state">Loading rules…</p>
+                </div>
+
+                <section id="rule-editor" class="panel rule-editor" aria-labelledby="rule-editor-heading" hidden>
+                    <div class="section-heading">
+                        <h2 id="rule-editor-heading">Create rule</h2>
+                        <button id="cancel-rule-edit" class="button-secondary" type="button">Cancel</button>
+                    </div>
+                    <form id="rule-form" class="form-stack" novalidate>
+                        <label for="rule-name">Name</label>
+                        <input id="rule-name" name="name" maxlength="150" required>
+
+                        <div class="rule-basic-grid">
+                            <div class="form-stack">
+                                <label for="rule-priority">Priority</label>
+                                <input id="rule-priority" name="priority" type="number" min="0" max="1000000" step="1" required>
+                                <p class="field-hint">Lower numbers run first; 0 is allowed.</p>
+                            </div>
+                            <label class="checkbox-row rule-enabled" for="rule-enabled">
+                                <input id="rule-enabled" name="enabled" type="checkbox" checked>
+                                Enabled
+                            </label>
+                        </div>
+
+                        <fieldset class="condition-builder">
+                            <legend>Conditions</legend>
+                            <p class="field-hint">The RuleEngine evaluates these conditions. Visitor location is determined server-side using GeoIP; the SDK does not request browser location permission.</p>
+                            <div id="condition-tree"></div>
+                            <p id="condition-error" class="message error-message" role="alert" hidden></p>
+                            <div class="condition-actions">
+                                <button id="add-condition" class="button-secondary" type="button">+ Add condition</button>
+                                <button id="add-condition-group" class="button-secondary" type="button">+ Add nested group</button>
+                            </div>
+                        </fieldset>
+
+                        <label for="rule-action">Action</label>
+                        <select id="rule-action" name="action">
+                            <option value="none">None</option>
+                            <option value="redirect">Redirect</option>
+                            <option value="open_new_tab">Open new tab</option>
+                        </select>
+                        <div id="destination-field">
+                            <label for="rule-destination">Destination URL</label>
+                            <input id="rule-destination" name="destinationUrl" type="url" placeholder="https://example.com">
+                        </div>
+
+                        <fieldset class="frequency-fieldset">
+                            <legend>Frequency</legend>
+                            <label class="checkbox-row" for="frequency-enabled">
+                                <input id="frequency-enabled" name="frequencyEnabled" type="checkbox">
+                                Enable frequency limit
+                            </label>
+                            <div id="frequency-options" class="frequency-options" hidden>
+                                <div>
+                                    <label for="frequency-mode">Mode</label>
+                                    <select id="frequency-mode" name="frequencyMode">
+                                        <option value="cooldown">Cooldown</option>
+                                        <option value="return_after">Return after</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="frequency-seconds">Seconds</label>
+                                    <input id="frequency-seconds" name="frequencySeconds" type="number" min="1" max="1073741823" step="1">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <label for="fullscreen-mode">Fullscreen</label>
+                        <select id="fullscreen-mode" name="fullscreenMode">
+                            <option value="off">Off</option>
+                            <option value="prompt">Prompt</option>
+                        </select>
+
+                        <p id="rule-form-error" class="message error-message" role="alert" hidden></p>
+                        <div class="rule-form-actions">
+                            <button id="save-rule-button" type="submit">Save rule</button>
+                            <button id="cancel-rule-edit-bottom" class="button-secondary" type="button">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+            </section>
+
+            <section id="test-rules-section" class="dashboard-section" aria-labelledby="test-rules-heading">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Simulation</p>
+                        <h2 id="test-rules-heading">Test Rules</h2>
+                    </div>
+                </div>
+                <p class="muted">Test the current project rules with simulated visitor data. This does not write events or change production frequency state.</p>
+                <form id="test-rules-form" class="panel test-rules-form form-stack">
+                    <fieldset class="test-visitor-fieldset">
+                        <legend>Visitor</legend>
+                        <div class="test-input-grid">
+                            <div><label for="test-ip">IP address</label><input id="test-ip" name="ip" type="text" placeholder="192.0.2.10"></div>
+                            <div><label for="test-country">Country</label><input id="test-country" name="country" type="text"></div>
+                            <div><label for="test-region">Region</label><input id="test-region" name="region" type="text"></div>
+                            <div><label for="test-city">City</label><input id="test-city" name="city" type="text"></div>
+                            <div><label for="test-browser">Browser</label><input id="test-browser" name="browser" type="text"></div>
+                            <div><label for="test-os">Operating system</label><input id="test-os" name="os" type="text"></div>
+                            <div>
+                                <label for="test-device-type">Device type</label>
+                                <select id="test-device-type" name="deviceType">
+                                    <option value="">Not specified</option>
+                                    <option value="mobile">Mobile</option>
+                                    <option value="desktop">Desktop</option>
+                                    <option value="tablet">Tablet</option>
+                                </select>
+                            </div>
+                            <div><label for="test-language">Language</label><input id="test-language" name="language" type="text"></div>
+                            <div><label for="test-timezone">Timezone</label><input id="test-timezone" name="timezone" type="text" placeholder="Asia/Kolkata"></div>
+                            <div><label for="test-screen-width">Screen width</label><input id="test-screen-width" name="screenWidth" type="number" min="1" step="any"></div>
+                            <div><label for="test-screen-height">Screen height</label><input id="test-screen-height" name="screenHeight" type="number" min="1" step="any"></div>
+                        </div>
+                    </fieldset>
+                    <fieldset class="test-visitor-fieldset">
+                        <legend>Frequency simulation</legend>
+                        <div class="test-input-grid frequency-simulation-grid">
+                            <div>
+                                <label for="test-visit-type">Visit</label>
+                                <select id="test-visit-type" name="visit">
+                                    <option value="first_visit">First visit</option>
+                                    <option value="returning">Returning visitor</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="test-seconds-since">Time since previous trigger (seconds)</label>
+                                <input id="test-seconds-since" name="secondsSincePreviousTrigger" type="number" min="0" step="1" value="0" disabled>
+                            </div>
+                        </div>
+                    </fieldset>
+                    <p id="test-rules-error" class="message error-message" role="alert" hidden></p>
+                    <button id="test-rules-submit" class="test-submit" type="submit">Test Rules</button>
+                </form>
+                <section id="test-rules-result" class="panel test-result" aria-labelledby="test-result-heading" aria-live="polite" hidden>
+                    <h3 id="test-result-heading">Result</h3>
+                    <div id="test-result-content"></div>
+                </section>
+            </section>
+
+            <div class="placeholder-grid">
+                <section id="events-section" class="panel placeholder-panel">
+                    <h2>Events</h2>
+                    <p class="muted">Project evaluation events will be available here.</p>
+                </section>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

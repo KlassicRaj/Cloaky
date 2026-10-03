@@ -79,7 +79,9 @@ describe("normalizeVisitor", () => {
 
 describe("rule condition helpers", () => {
     it("exposes the supported fields and operators", () => {
-        expect(SUPPORTED_RULE_FIELDS).toContain("browser_geo_latitude");
+        expect(SUPPORTED_RULE_FIELDS).not.toContain("browser_geo_latitude");
+        expect(SUPPORTED_RULE_FIELDS).not.toContain("browser_geo_longitude");
+        expect(SUPPORTED_RULE_FIELDS).not.toContain("browser_geo_accuracy");
         expect(SUPPORTED_RULE_FIELDS).toContain("screen_width");
         expect(SUPPORTED_RULE_OPERATORS).toContain("equals");
         expect(SUPPORTED_RULE_OPERATORS).toContain("cidr");

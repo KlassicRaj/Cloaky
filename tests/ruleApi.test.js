@@ -197,7 +197,9 @@ describe("Rule API", () => {
         { operator: "AND", conditions: [{ field: "country", operator: "equals" }] },
         { operator: "AND", conditions: [{ field: "screen_width", operator: "greater_than", value: "300" }] },
         { operator: "AND", conditions: [{ field: "ip", operator: "cidr", value: "192.168.1.1/99" }] },
-        { operator: "AND", conditions: [{ field: "browser_geo_latitude", operator: "equals", value: 91 }] },
+        { operator: "AND", conditions: [{ field: "browser_geo_latitude", operator: "equals", value: 45 }] },
+        { operator: "AND", conditions: [{ field: "browser_geo_longitude", operator: "equals", value: -90 }] },
+        { operator: "AND", conditions: [{ field: "browser_geo_accuracy", operator: "equals", value: 10 }] },
     ])("rejects malformed condition structure %s", async (conditions) => {
         const { app, ruleService } = createTestApp();
 

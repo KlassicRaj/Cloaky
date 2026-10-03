@@ -52,6 +52,33 @@ describe("GET /r/:projectKey", () => {
     });
 
     it.each([
+        ["https://example.com", "https://example.com/?_fs=1"],
+        ["https://example.com/page?foo=bar", "https://example.com/page?foo=bar&_fs=1"],
+        ["https://example.com/page?foo=bar#section", "https://example.com/page?foo=bar&_fs=1#section"],
+        ["https://example.com/page?_fs=0", "https://example.com/page?_fs=1"],
+    ])("adds _fs=1 to validated prompt redirect destinations: %s", async (destinationUrl, location) => {
+        const { app } = createTestApp({
+            ...redirectDecision(destinationUrl),
+            fullscreenMode: "prompt",
+        });
+
+        await request(app)
+            .get(`/r/${projectKey}`)
+            .expect(302)
+            .expect("Location", location);
+    });
+
+    it("leaves fullscreen-off redirect locations unchanged", async () => {
+        const destinationUrl = "https://example.com/page?foo=bar#section";
+        const { app } = createTestApp(redirectDecision(destinationUrl));
+
+        await request(app)
+            .get(`/r/${projectKey}`)
+            .expect(302)
+            .expect("Location", destinationUrl);
+    });
+
+    it.each([
         ["no match", { matched: false, action: "none", reason: "no_match" }],
         ["none action", { matched: true, action: "none", reason: "rule_matched" }],
         ["frequency limited", { matched: true, action: "none", reason: "frequency_limited" }],
@@ -114,11 +141,15 @@ describe("GET /r/:projectKey", () => {
     it.each([
         "javascript:alert(1)",
         "data:text/html,unsafe",
+        "vbscript:alert(1)",
         "file:///etc/passwd",
         "blob:https://example.com/identifier",
         "/relative/path",
     ])("never redirects to unsafe destination %s", async (destinationUrl) => {
-        const { app } = createTestApp(redirectDecision(destinationUrl));
+        const { app } = createTestApp({
+            ...redirectDecision(destinationUrl),
+            fullscreenMode: "prompt",
+        });
 
         const response = await request(app).get(`/r/${projectKey}`).expect(204);
         expect(response.headers.location).toBeUndefined();

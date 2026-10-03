@@ -1,5 +1,9 @@
 const db = require("../config/db");
 
+function allowedOriginsJsonb(allowedOrigins) {
+	return db.raw("to_jsonb(?::text[])", [allowedOrigins]);
+}
+
 module.exports = {
 	async findById(id) {
 		return db("projects").where({ id }).first();
@@ -14,14 +18,22 @@ module.exports = {
 	},
 
 	async create(project) {
-		const [createdProject] = await db("projects").insert(project).returning("*");
+		const values = { ...project };
+		if (Array.isArray(values.allowed_origins)) {
+			values.allowed_origins = allowedOriginsJsonb(values.allowed_origins);
+		}
+		const [createdProject] = await db("projects").insert(values).returning("*");
 		return createdProject;
 	},
 
 	async updateById(id, updates) {
+		const values = { ...updates };
+		if (Array.isArray(values.allowed_origins)) {
+			values.allowed_origins = allowedOriginsJsonb(values.allowed_origins);
+		}
 		const [updatedProject] = await db("projects")
 			.where({ id })
-			.update(updates)
+			.update(values)
 			.returning("*");
 		return updatedProject;
 	},

@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Step 35 — Authenticated Events API
+Step 39 — Browser geolocation de-scoping and fullscreen prompt
 
 ## Completed
 
@@ -15,13 +15,18 @@ Step 35 — Authenticated Events API
 - [x] Project and rule management APIs
 - [x] bcrypt authentication, signed sessions, explicit admin provisioning, and ownership checks for management APIs
 - [x] Authenticated, owner-scoped event listing API with bounded pagination and analytics-only fields
+- [x] Vanilla HTML/CSS/JavaScript login, project dashboard, and project details foundation
+- [x] Project-scoped vanilla JavaScript Rule Builder using authenticated Rule CRUD APIs
+- [x] Project allowed origins persist and round-trip as JSONB arrays on create and update
+- [x] Authenticated Test Rules API and project-page visitor simulation UI
+- [x] Browser geolocation removed from public inputs and product scope
+- [x] Fullscreen prompt signaling and explicit-click SDK UI
 
 ## Remaining
 
-- [ ] Dashboard and login UI
 - [ ] Event dashboard
 - [ ] Production hardening and load testing
 
 ## Tests
 
-Verification: `npm test` passes all 437 tests across 21 test files, including authenticated event API pagination/authorization, repositories, authentication/session, RuleEngine, Redis, GeoIP, and SDK coverage.
+Step 39 verification: `npm test` passes all 513 tests across 24 test files. Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission. Fullscreen prompting uses `_fs=1` on validated redirect/open-new-tab destinations and requires an explicit visitor click.

@@ -17,6 +17,7 @@ function createBrowser({
     fetchImplementation,
     scriptUrl = "https://api.example.test/sdk.js",
     navigatorOverrides = {},
+    locationHref = "https://customer.example.test/page",
     responseDecision = {
         matched: true,
         ruleId: "rule-1",
@@ -28,20 +29,68 @@ function createBrowser({
     openImplementation = () => ({}),
     urlConstructor = URL,
     documentOverrides = {},
+    fullscreenEnabled = true,
+    webkitFullscreenEnabled,
+    fullscreenRequest,
 } = {}) {
     const fetch = vi.fn(fetchImplementation || (() => Promise.resolve({
         ok: true,
         json: () => Promise.resolve(responseDecision),
     })));
     const location = {
-        href: "https://customer.example.test/page",
+        href: locationHref,
         replace: vi.fn(),
     };
     const open = vi.fn(openImplementation);
+    const elements = [];
+    function createElement(tagName) {
+        const listeners = {};
+        const element = {
+            tagName,
+            style: {},
+            children: [],
+            attributes: {},
+            setAttribute: (name, value) => { element.attributes[name] = value; },
+            appendChild: (child) => {
+                element.children.push(child);
+                child.parentNode = element;
+            },
+            addEventListener: (name, listener) => { listeners[name] = listener; },
+            remove: () => {
+                if (element.parentNode) {
+                    const index = element.parentNode.children.indexOf(element);
+                    if (index >= 0) element.parentNode.children.splice(index, 1);
+                    element.parentNode = null;
+                }
+            },
+            click: () => listeners.click?.(),
+        };
+        elements.push(element);
+        return element;
+    }
+    const body = {
+        children: [],
+        appendChild: (element) => {
+            body.children.push(element);
+            element.parentNode = body;
+        },
+        removeChild: (element) => {
+            const index = body.children.indexOf(element);
+            if (index >= 0) body.children.splice(index, 1);
+            element.parentNode = null;
+        },
+    };
+    const documentElement = {};
+    if (fullscreenRequest) documentElement.requestFullscreen = fullscreenRequest;
     const document = {
         currentScript: { src: scriptUrl },
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        createElement,
+        body,
+        documentElement,
+        fullscreenEnabled,
+        ...(webkitFullscreenEnabled === undefined ? {} : { webkitFullscreenEnabled }),
         ...documentOverrides,
     };
     const window = {
@@ -58,7 +107,7 @@ function createBrowser({
     };
 
     vm.runInNewContext(sdkSource, vm.createContext({ window }));
-    return { window, fetch, location, open, document };
+    return { window, fetch, location, open, document, elements };
 }
 
 async function fetchBody(browser, projectKey = "public-key") {
@@ -190,6 +239,20 @@ describe("browser SDK", () => {
         }
     });
 
+    it("never reads or invokes browser geolocation APIs", async () => {
+        const geolocation = {
+            getCurrentPosition: vi.fn(),
+            watchPosition: vi.fn(),
+        };
+        const browser = createBrowser({ navigatorOverrides: { geolocation } });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
+        expect(geolocation.watchPosition).not.toHaveBeenCalled();
+        expect(JSON.parse(browser.fetch.mock.calls[0][1].body)).not.toHaveProperty("browserGeo");
+    });
+
     it.each([400, 500])("handles API status %s without throwing", async (status) => {
         const browser = createBrowser({
             fetchImplementation: () => Promise.resolve({ ok: false, status }),
@@ -264,6 +327,42 @@ describe("browser SDK", () => {
     );
 
     it.each([
+        ["https://example.com", "https://example.com/?_fs=1"],
+        ["https://example.com?a=1", "https://example.com/?a=1&_fs=1"],
+        ["https://example.com?a=1#section", "https://example.com/?a=1&_fs=1#section"],
+        ["https://example.com?_fs=0", "https://example.com/?_fs=1"],
+    ])("adds the fullscreen marker to prompt redirects: %s", async (destinationUrl, expectedUrl) => {
+        const browser = createBrowser({
+            responseDecision: {
+                matched: true,
+                action: "redirect",
+                destinationUrl,
+                fullscreenMode: "prompt",
+            },
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.location.replace).toHaveBeenCalledWith(expectedUrl);
+    });
+
+    it("leaves off-mode redirect destinations unchanged", async () => {
+        const destinationUrl = "https://example.com/page?foo=bar#section";
+        const browser = createBrowser({
+            responseDecision: {
+                matched: true,
+                action: "redirect",
+                destinationUrl,
+                fullscreenMode: "off",
+            },
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.location.replace).toHaveBeenCalledWith(destinationUrl);
+    });
+
+    it.each([
         ["missing URL", undefined],
         ["javascript URL", "javascript:alert(1)"],
         ["data URL", "data:text/html,unsafe"],
@@ -295,6 +394,160 @@ describe("browser SDK", () => {
 
         expect(browser.open).toHaveBeenCalledWith(destinationUrl, "_blank", "noopener,noreferrer");
         expect(browser.document.addEventListener).not.toHaveBeenCalled();
+    });
+
+    it("adds the fullscreen marker before opening a prompt-mode new tab", async () => {
+        const browser = createBrowser({
+            responseDecision: {
+                matched: true,
+                action: "open_new_tab",
+                destinationUrl: "https://safe.example/tab?source=rule#section",
+                fullscreenMode: "prompt",
+            },
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.open).toHaveBeenCalledWith(
+            "https://safe.example/tab?source=rule&_fs=1#section",
+            "_blank",
+            "noopener,noreferrer",
+        );
+    });
+
+    it("retains the popup-blocker retry behavior for prompt-mode new tabs", async () => {
+        const openImplementation = vi.fn().mockReturnValueOnce(null).mockReturnValueOnce({});
+        const browser = createBrowser({
+            responseDecision: {
+                matched: true,
+                action: "open_new_tab",
+                destinationUrl: "https://safe.example/tab",
+                fullscreenMode: "prompt",
+            },
+            openImplementation,
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+        const [, retryHandler] = browser.document.addEventListener.mock.calls[0];
+        retryHandler();
+
+        expect(openImplementation).toHaveBeenLastCalledWith(
+            "https://safe.example/tab?_fs=1",
+            "_blank",
+            "noopener,noreferrer",
+        );
+    });
+
+    it("shows the fullscreen prompt for _fs=1 and requests fullscreen only on button click", async () => {
+        const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenRequest: requestFullscreen,
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.document.body.children).toHaveLength(1);
+        expect(requestFullscreen).not.toHaveBeenCalled();
+        const prompt = browser.document.body.children[0];
+        expect(prompt.attributes).toMatchObject({ role: "group", "aria-label": "Fullscreen option" });
+        const viewButton = prompt.children[1].children.find((element) => element.textContent === "View full screen");
+        viewButton.click();
+        expect(requestFullscreen).toHaveBeenCalledTimes(1);
+        expect(requestFullscreen.mock.contexts[0]).toBe(browser.document.documentElement);
+        await Promise.resolve();
+        expect(browser.document.body.children).toHaveLength(0);
+    });
+
+    it("hides the fullscreen prompt when the visitor dismisses it", async () => {
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenRequest: vi.fn().mockResolvedValue(undefined),
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+        const prompt = browser.document.body.children[0];
+        prompt.children[1].children.find((element) => element.textContent === "Not now").click();
+
+        expect(browser.document.body.children).toHaveLength(0);
+    });
+
+    it("does not show a fullscreen prompt when fullscreen is unsupported", async () => {
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenEnabled: false,
+        });
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "public-key" })).resolves.toMatchObject({
+            matched: true,
+        });
+        expect(browser.document.body.children).toHaveLength(0);
+    });
+
+    it("dismisses the fullscreen prompt when a request rejects without breaking the SDK", async () => {
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenRequest: vi.fn().mockRejectedValue(new Error("fullscreen denied")),
+        });
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "public-key" })).resolves.toMatchObject({
+            matched: true,
+        });
+        const prompt = browser.document.body.children[0];
+        prompt.children[1].children.find((element) => element.textContent === "View full screen").click();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(browser.document.body.children).toHaveLength(0);
+    });
+
+    it("does not show a fullscreen prompt without the _fs=1 marker", async () => {
+        const browser = createBrowser({
+            fullscreenRequest: vi.fn().mockResolvedValue(undefined),
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.document.body.children).toHaveLength(0);
+    });
+
+    it("does not append the fullscreen prompt more than once during the page lifecycle", async () => {
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenRequest: vi.fn().mockResolvedValue(undefined),
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+
+        expect(browser.document.body.children).toHaveLength(1);
+    });
+
+    it("remains safe when fullscreen prompt DOM APIs are unavailable", async () => {
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            fullscreenRequest: vi.fn().mockResolvedValue(undefined),
+            documentOverrides: { createElement: undefined, body: undefined },
+        });
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "public-key" })).resolves.toMatchObject({
+            matched: true,
+        });
+    });
+
+    it("supports the WebKit fullscreen request fallback", async () => {
+        const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+        const browser = createBrowser({
+            locationHref: "https://customer.example.test/page?_fs=1",
+            webkitFullscreenEnabled: true,
+        });
+        browser.document.documentElement.webkitRequestFullscreen = requestFullscreen;
+
+        await browser.window.VisitorRouting.init({ projectKey: "public-key" });
+        browser.document.body.children[0].children[1].children
+            .find((element) => element.textContent === "View full screen").click();
+
+        expect(requestFullscreen).toHaveBeenCalledTimes(1);
+        expect(requestFullscreen.mock.contexts[0]).toBe(browser.document.documentElement);
     });
 
     it("retries a blocked popup once on click and removes the listener", async () => {

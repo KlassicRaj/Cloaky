@@ -112,6 +112,133 @@
         }
     }
 
+    function prepareDestination(value, fullscreenMode) {
+        var destinationUrl = validateHttpUrl(value);
+        if (!destinationUrl || fullscreenMode !== "prompt") {
+            return destinationUrl;
+        }
+
+        try {
+            var url = new global.URL(destinationUrl);
+            url.searchParams.set("_fs", "1");
+            return url.toString();
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    function fullscreenRequestMethod(element, documentObject) {
+        if (!element) {
+            return null;
+        }
+
+        if (
+            (documentObject.fullscreenEnabled === false && documentObject.webkitFullscreenEnabled !== true) ||
+            (documentObject.webkitFullscreenEnabled === false && documentObject.fullscreenEnabled !== true)
+        ) {
+            return null;
+        }
+
+        if (typeof element.requestFullscreen === "function") {
+            return element.requestFullscreen;
+        }
+        if (typeof element.webkitRequestFullscreen === "function") {
+            return element.webkitRequestFullscreen;
+        }
+        if (typeof element.webkitRequestFullScreen === "function") {
+            return element.webkitRequestFullScreen;
+        }
+        return null;
+    }
+
+    function showFullscreenPrompt() {
+        try {
+            var documentObject = global.document;
+            if (!documentObject || global.__visitorRoutingFullscreenPrompt === true) {
+                return;
+            }
+
+            var locationHref = global.location && global.location.href;
+            if (typeof locationHref !== "string" || typeof global.URL !== "function") {
+                return;
+            }
+
+            var currentUrl = new global.URL(locationHref);
+            if (currentUrl.searchParams.get("_fs") !== "1") {
+                return;
+            }
+
+            var fullscreenTarget = documentObject.documentElement;
+            var requestFullscreen = fullscreenRequestMethod(fullscreenTarget, documentObject);
+            if (!requestFullscreen) {
+                return;
+            }
+
+            var container = documentObject.createElement("div");
+            var message = documentObject.createElement("p");
+            var actions = documentObject.createElement("div");
+            var viewButton = documentObject.createElement("button");
+            var dismissButton = documentObject.createElement("button");
+            var parent = documentObject.body || documentObject.documentElement;
+            if (!parent || typeof parent.appendChild !== "function") {
+                return;
+            }
+
+            container.setAttribute("role", "group");
+            container.setAttribute("aria-label", "Fullscreen option");
+            container.style.position = "fixed";
+            container.style.right = "1rem";
+            container.style.bottom = "1rem";
+            container.style.zIndex = "2147483647";
+            container.style.maxWidth = "20rem";
+            container.style.padding = "1rem";
+            container.style.borderRadius = "0.5rem";
+            container.style.background = "#ffffff";
+            container.style.color = "#111827";
+            container.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.2)";
+            container.style.font = "14px/1.4 system-ui, sans-serif";
+            message.textContent = "View this page in full screen?";
+            message.style.margin = "0 0 0.75rem";
+            actions.style.display = "flex";
+            actions.style.justifyContent = "flex-end";
+            actions.style.gap = "0.5rem";
+            viewButton.type = "button";
+            viewButton.textContent = "View full screen";
+            dismissButton.type = "button";
+            dismissButton.textContent = "Not now";
+            actions.appendChild(dismissButton);
+            actions.appendChild(viewButton);
+            container.appendChild(message);
+            container.appendChild(actions);
+
+            function dismissPrompt() {
+                try {
+                    if (typeof container.remove === "function") {
+                        container.remove();
+                    } else if (container.parentNode && typeof container.parentNode.removeChild === "function") {
+                        container.parentNode.removeChild(container);
+                    }
+                } catch (_error) {
+                    // Prompt cleanup must not affect the host page.
+                }
+            }
+
+            dismissButton.addEventListener("click", dismissPrompt);
+            viewButton.addEventListener("click", function requestFullscreenFromGesture() {
+                try {
+                    var result = requestFullscreen.call(fullscreenTarget);
+                    global.Promise.resolve(result).then(dismissPrompt, dismissPrompt);
+                } catch (_error) {
+                    dismissPrompt();
+                }
+            });
+            parent.appendChild(container);
+            global.__visitorRoutingFullscreenPrompt = true;
+        } catch (_error) {
+            // Fullscreen prompting is optional and must not affect the host page.
+        }
+    }
+
     function normalizeDecision(value) {
         if (!value || typeof value !== "object" || Array.isArray(value)) {
             return null;
@@ -139,8 +266,8 @@
         };
     }
 
-    function handleRedirect(value) {
-        var destinationUrl = validateHttpUrl(value);
+    function handleRedirect(value, fullscreenMode) {
+        var destinationUrl = prepareDestination(value, fullscreenMode);
         if (!destinationUrl) {
             return;
         }
@@ -167,8 +294,8 @@
         }
     }
 
-    function handleOpenNewTab(value) {
-        var destinationUrl = validateHttpUrl(value);
+    function handleOpenNewTab(value, fullscreenMode) {
+        var destinationUrl = prepareDestination(value, fullscreenMode);
         if (!destinationUrl || typeof global.open !== "function") {
             return;
         }
@@ -215,9 +342,9 @@
             }
 
             if (decision.action === "redirect") {
-                handleRedirect(decision.destinationUrl);
+                handleRedirect(decision.destinationUrl, decision.fullscreenMode);
             } else if (decision.action === "open_new_tab") {
-                handleOpenNewTab(decision.destinationUrl);
+                handleOpenNewTab(decision.destinationUrl, decision.fullscreenMode);
             }
         } catch (_error) {
             // SDK actions are isolated from the customer page.
@@ -230,6 +357,7 @@
         }
 
         try {
+            showFullscreenPrompt();
             var projectKey = options && typeof options.projectKey === "string"
                 ? options.projectKey.trim()
                 : "";

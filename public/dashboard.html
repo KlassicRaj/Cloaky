@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="same-origin">
+    <title>Projects · Visitor Routing</title>
+    <link rel="stylesheet" href="/assets/css/app.css">
+    <script src="/assets/js/api.js" defer></script>
+    <script src="/assets/js/dashboard.js" defer></script>
+</head>
+<body class="page">
+    <header class="topbar">
+        <a class="brand" href="/dashboard">Visitor Routing</a>
+        <button id="logout-button" class="button-secondary" type="button">Log out</button>
+    </header>
+    <main class="content">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Management</p>
+                <h1>Projects</h1>
+            </div>
+            <button id="show-create-project" type="button">+ Create project</button>
+        </div>
+
+        <section id="create-project-section" class="panel form-panel" aria-labelledby="create-project-title" hidden>
+            <div class="section-heading">
+                <h2 id="create-project-title">Create project</h2>
+                <button id="cancel-create-project" class="button-secondary" type="button">Cancel</button>
+            </div>
+            <form id="create-project-form" class="form-stack">
+                <label for="project-name">Project name</label>
+                <input id="project-name" name="name" maxlength="150" required>
+                <label for="project-key">Project key</label>
+                <input id="project-key" name="projectKey" maxlength="100" required>
+                <label for="allowed-origins">Allowed origins</label>
+                <textarea id="allowed-origins" name="allowedOrigins" rows="4" placeholder="https://example.com&#10;https://www.example.com"></textarea>
+                <p class="field-hint">Enter one HTTP or HTTPS origin per line.</p>
+                <label class="checkbox-row" for="project-enabled">
+                    <input id="project-enabled" name="enabled" type="checkbox" checked>
+                    Enabled
+                </label>
+                <p id="create-project-error" class="message error-message" role="alert" hidden></p>
+                <button id="create-project-submit" type="submit">Create project</button>
+            </form>
+        </section>
+
+        <p id="dashboard-message" class="message" role="status" hidden></p>
+        <section id="projects-list" class="project-list" aria-label="Projects" aria-live="polite"></section>
+    </main>
+</body>
+</html>

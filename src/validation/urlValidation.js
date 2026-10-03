@@ -28,6 +28,17 @@ function validateDestinationUrl(value) {
     return destinationUrlSchema.safeParse(value);
 }
 
+function addFullscreenPromptParameter(value) {
+    const validation = validateDestinationUrl(value);
+    if (!validation.success) {
+        return validation;
+    }
+
+    const url = new URL(validation.data);
+    url.searchParams.set("_fs", "1");
+    return { success: true, data: url.toString() };
+}
+
 const ruleDestinationSchema = z.object({
     action: z.enum(["redirect", "open_new_tab", "none"]),
     destination_url: z.unknown().optional(),
@@ -64,4 +75,5 @@ module.exports = {
     destinationUrlSchema,
     ruleDestinationSchema,
     validateDestinationUrl,
+    addFullscreenPromptParameter,
 };

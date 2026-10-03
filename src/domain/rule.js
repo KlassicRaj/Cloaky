@@ -10,9 +10,6 @@ const SUPPORTED_RULE_FIELDS = Object.freeze([
     "timezone",
     "screen_width",
     "screen_height",
-    "browser_geo_latitude",
-    "browser_geo_longitude",
-    "browser_geo_accuracy",
 ]);
 
 const SUPPORTED_RULE_OPERATORS = Object.freeze([

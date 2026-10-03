@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 const {
+    addFullscreenPromptParameter,
     ruleDestinationSchema,
     validateDestinationUrl,
 } = require("../src/validation/urlValidation");
@@ -56,6 +57,22 @@ describe("ruleDestinationSchema", () => {
             action: "open_new_tab",
             destination_url: "https://example.com",
         }).success).toBe(true);
+    });
+
+    describe("addFullscreenPromptParameter", () => {
+        it.each([
+            ["https://example.com", "https://example.com/?_fs=1"],
+            ["https://example.com?a=1", "https://example.com/?a=1&_fs=1"],
+            ["https://example.com?a=1#section", "https://example.com/?a=1&_fs=1#section"],
+            ["https://example.com?_fs=0", "https://example.com/?_fs=1"],
+        ])("sets the fullscreen marker on %s", (value, expected) => {
+            expect(addFullscreenPromptParameter(value)).toEqual({ success: true, data: expected });
+        });
+
+        it("does not modify invalid or unsafe destinations", () => {
+            expect(addFullscreenPromptParameter("javascript:alert(1)").success).toBe(false);
+            expect(addFullscreenPromptParameter("data:text/html,unsafe").success).toBe(false);
+        });
     });
 
     it("rejects unsafe destinations for actions that require a URL", () => {
