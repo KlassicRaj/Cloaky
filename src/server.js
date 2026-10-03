@@ -3,16 +3,22 @@ const env = require("./config/env");
 const redis = require("./config/redis");
 const healthRouter = require("./routes/health");
 const { createEvaluateRouter } = require("./routes/evaluate");
+const { createRedirectRouter } = require("./routes/redirect");
+const sdkRouter = require("./routes/sdk");
 const { createRateLimit } = require("./middleware/rateLimit");
 const projectRepository = require("./repositories/projectRepository");
 const ruleRepository = require("./repositories/ruleRepository");
+const eventRepository = require("./repositories/eventRepository");
 const { evaluateRules } = require("./services/ruleEngine");
 const { FrequencyService } = require("./services/frequencyService");
+const { createEventLoggingService } = require("./services/eventLoggingService");
 const geoIpService = require("./services/geoIpService");
 const clientIpService = require("./services/clientIpService");
 const clientInfoService = require("./services/clientInfoService");
 const visitorIdentityService = require("./services/visitorIdentityService");
 const { createEvaluationService } = require("./services/evaluationService");
+
+const eventLoggingService = createEventLoggingService({ eventRepository });
 
 function createRealEvaluationService(projectRepositoryInstance = projectRepository) {
     return createEvaluationService({
@@ -24,6 +30,7 @@ function createRealEvaluationService(projectRepositoryInstance = projectReposito
         visitorIdentityService,
         frequencyService: new FrequencyService(redis),
         ruleEngine: { evaluateRules },
+        eventLoggingService,
     });
 }
 
@@ -43,6 +50,8 @@ function createApp({
 
     app.use(express.json());
     app.use(healthRouter);
+    app.use(sdkRouter);
+    app.use(createRedirectRouter({ evaluationService: configuredEvaluationService }));
     app.use("/api/v1", createEvaluateRouter({
         evaluationService: configuredEvaluationService,
         projectRepository: projectRepositoryInstance,

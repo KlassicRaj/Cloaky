@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const request = require("supertest");
 const { createApp } = require("../src/server");
+const { createEvaluationService } = require("../src/services/evaluationService");
 
 const projectKey = "public-project-key";
 const allowedOrigin = "https://allowed.example";
@@ -74,6 +75,59 @@ describe("POST /api/v1/evaluate", () => {
             clientInfo: expect.objectContaining({ browser: "Chrome", screen: validBody.screen }),
         }));
         expect(evaluationService.evaluate.mock.calls[0][0].request).toBeDefined();
+    });
+
+    it("does not return HTTP 500 when asynchronous event logging fails", async () => {
+        const project = { id: "project-1", enabled: true };
+        const projectRepository = {
+            findByProjectKey: vi.fn().mockResolvedValue(project),
+        };
+        const eventLoggingService = {
+            logEvaluationEvent: vi.fn().mockRejectedValue(new Error("private event database failure")),
+        };
+        const evaluationService = createEvaluationService({
+            projectRepository,
+            ruleRepository: { listByProjectId: vi.fn().mockResolvedValue([]) },
+            clientIpService: { getClientIp: vi.fn().mockReturnValue("203.0.113.10") },
+            geoIpService: { lookup: vi.fn().mockReturnValue({ country: null, region: null, city: null }) },
+            clientInfoService: {
+                normalizeClientInfo: vi.fn().mockReturnValue({
+                    browser: null,
+                    os: null,
+                    deviceType: null,
+                    language: null,
+                    timezone: null,
+                    screen: { width: null, height: null },
+                }),
+            },
+            visitorIdentityService: { createVisitorId: vi.fn() },
+            frequencyService: { checkAndRecord: vi.fn() },
+            ruleEngine: {
+                evaluateRules: vi.fn().mockReturnValue({
+                    matched: false,
+                    ruleId: null,
+                    action: "none",
+                    destinationUrl: null,
+                    fullscreenMode: "off",
+                    reason: "no_match",
+                }),
+            },
+            eventLoggingService,
+        });
+        const testApp = createApp({
+            evaluationService,
+            projectRepository,
+            rateLimitMiddleware: allowAllRateLimit,
+        });
+
+        const response = await request(testApp)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send(validBody)
+            .expect(200);
+
+        expect(response.body).toMatchObject({ matched: false, reason: "no_match" });
+        expect(eventLoggingService.logEvaluationEvent).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(response.body)).not.toContain("private event database failure");
     });
 
     it("requires projectKey", async () => {

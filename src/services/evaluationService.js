@@ -1,5 +1,6 @@
 const { createDecision } = require("../domain/decision");
 const { normalizeVisitor } = require("../domain/visitor");
+const { validateDestinationUrl } = require("../validation/urlValidation");
 
 function emptyGeo() {
     return { country: null, region: null, city: null };
@@ -39,6 +40,59 @@ function noActionForMatch(ruleId, reason) {
     });
 }
 
+function scheduleEvaluationEvent(eventLoggingService, projectId, decision, visitor, triggered) {
+    if (!eventLoggingService || typeof eventLoggingService.logEvaluationEvent !== "function") {
+        return;
+    }
+
+    const event = {
+        projectId,
+        ruleId: decision.ruleId,
+        matched: decision.matched,
+        triggered,
+        reason: decision.reason,
+        action: decision.action,
+        country: visitor?.geo?.country ?? null,
+        region: visitor?.geo?.region ?? null,
+        deviceType: visitor?.deviceType ?? null,
+        browser: visitor?.browser ?? null,
+        os: visitor?.os ?? null,
+    };
+
+    try {
+        Promise.resolve(eventLoggingService.logEvaluationEvent(event)).catch(() => {
+            console.error("Evaluation event logging failed.");
+        });
+    } catch {
+        console.error("Evaluation event logging failed.");
+    }
+}
+
+function sanitizeDecision(decision) {
+    const normalizedDecision = createDecision(decision);
+
+    if (!normalizedDecision.matched) {
+        return createDecision({
+            ...normalizedDecision,
+            ruleId: null,
+            action: "none",
+            destinationUrl: null,
+            fullscreenMode: "off",
+        });
+    }
+
+    if (normalizedDecision.action === "none") {
+        return createDecision({ ...normalizedDecision, destinationUrl: null });
+    }
+
+    const destination = validateDestinationUrl(normalizedDecision.destinationUrl);
+    if (!destination.success) {
+        return noActionForMatch(normalizedDecision.ruleId, "invalid_destination_url");
+    }
+
+    return createDecision({ ...normalizedDecision, destinationUrl: destination.data });
+}
+
 function createEvaluationService({
     projectRepository,
     ruleRepository,
@@ -48,6 +102,7 @@ function createEvaluationService({
     visitorIdentityService,
     frequencyService,
     ruleEngine,
+    eventLoggingService,
 }) {
     async function evaluate({ projectKey, request, clientInfo } = {}) {
         const project = await projectRepository.findByProjectKey(projectKey);
@@ -56,7 +111,9 @@ function createEvaluationService({
         }
 
         if (project.enabled === false) {
-            return createDecision({ reason: "project_disabled" });
+            const decision = createDecision({ reason: "project_disabled" });
+            scheduleEvaluationEvent(eventLoggingService, project.id, decision, null, false);
+            return decision;
         }
 
         const rules = await ruleRepository.listByProjectId(project.id);
@@ -84,24 +141,36 @@ function createEvaluationService({
             browserGeo: normalizeBrowserGeo(clientInfo?.browserGeo),
         });
 
-        const decision = await ruleEngine.evaluateRules(visitor, rules);
+        const decision = sanitizeDecision(await ruleEngine.evaluateRules(visitor, rules));
         if (!decision.matched) {
+            scheduleEvaluationEvent(eventLoggingService, project.id, decision, visitor, false);
+            return decision;
+        }
+
+        if (decision.reason === "invalid_destination_url") {
+            scheduleEvaluationEvent(eventLoggingService, project.id, decision, visitor, false);
             return decision;
         }
 
         if (!decision.ruleId) {
-            return noActionForMatch(null, "rule_configuration_unavailable");
+            const result = noActionForMatch(null, "rule_configuration_unavailable");
+            scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+            return result;
         }
 
         const matchingRule = rules.find((rule) => rule.id === decision.ruleId);
         if (!matchingRule) {
-            return noActionForMatch(decision.ruleId, "rule_configuration_unavailable");
+            const result = noActionForMatch(null, "rule_configuration_unavailable");
+            scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+            return result;
         }
 
         let visitorId = null;
         if (matchingRule.frequency_enabled !== false) {
             if (typeof clientIp !== "string" || clientIp.trim() === "") {
-                return noActionForMatch(decision.ruleId, "client_ip_unavailable");
+                const result = noActionForMatch(decision.ruleId, "client_ip_unavailable");
+                scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+                return result;
             }
 
             visitorId = await visitorIdentityService.createVisitorId(clientIp);
@@ -117,13 +186,22 @@ function createEvaluationService({
         });
 
         if (frequencyResult?.triggered === true) {
+            scheduleEvaluationEvent(
+                eventLoggingService,
+                project.id,
+                decision,
+                visitor,
+                decision.action !== "none",
+            );
             return decision;
         }
 
-        return noActionForMatch(
+        const result = noActionForMatch(
             decision.ruleId,
             frequencyResult?.reason || "frequency_unavailable",
         );
+        scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+        return result;
     }
 
     return { evaluate };

@@ -62,6 +62,9 @@ function makeDependencies(overrides = {}) {
         ruleEngine: {
             evaluateRules: vi.fn().mockReturnValue(matchedDecision()),
         },
+        eventLoggingService: {
+            logEvaluationEvent: vi.fn().mockResolvedValue(undefined),
+        },
         fixtures: { project, rule },
     };
 
@@ -91,6 +94,14 @@ describe("EvaluationService", () => {
 
         await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
             .resolves.toMatchObject({ matched: false, action: "none", reason: "project_disabled" });
+        expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledWith(expect.objectContaining({
+            projectId: "project-1",
+            ruleId: null,
+            matched: false,
+            triggered: false,
+            reason: "project_disabled",
+            action: "none",
+        }));
         expect(dependencies.ruleRepository.listByProjectId).not.toHaveBeenCalled();
         expect(dependencies.ruleEngine.evaluateRules).not.toHaveBeenCalled();
     });
@@ -110,6 +121,14 @@ describe("EvaluationService", () => {
         await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
             .resolves.toMatchObject({ matched: false, reason: "no_match" });
         expect(dependencies.frequencyService.checkAndRecord).not.toHaveBeenCalled();
+        expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledWith(expect.objectContaining({
+            projectId: "project-1",
+            ruleId: null,
+            matched: false,
+            triggered: false,
+            reason: "no_match",
+            action: "none",
+        }));
     });
 
     it("continues with null geo when GeoIP lookup throws", async () => {
@@ -237,7 +256,7 @@ describe("EvaluationService", () => {
         dependencies.ruleEngine.evaluateRules.mockReturnValue(noMatchDecision);
 
         await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
-            .resolves.toBe(noMatchDecision);
+            .resolves.toEqual(noMatchDecision);
         expect(dependencies.frequencyService.checkAndRecord).not.toHaveBeenCalled();
     });
 
@@ -254,6 +273,29 @@ describe("EvaluationService", () => {
             frequencySeconds: 60,
             frequencyMode: "cooldown",
         });
+    });
+
+    it("logs a successful matched and triggered evaluation without IP identifiers", async () => {
+        const dependencies = makeDependencies();
+
+        await createService(dependencies).evaluate({ projectKey: "public-project-key" });
+
+        expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledWith({
+            projectId: "project-1",
+            ruleId: "rule-1",
+            matched: true,
+            triggered: true,
+            reason: "rule_matched",
+            action: "redirect",
+            country: "IN",
+            region: "DL",
+            deviceType: null,
+            browser: null,
+            os: null,
+        });
+        const event = dependencies.eventLoggingService.logEvaluationEvent.mock.calls[0][0];
+        expect(event).not.toHaveProperty("ip");
+        expect(event).not.toHaveProperty("visitorId");
     });
 
     it("preserves the rule decision when frequency is disabled", async () => {
@@ -274,13 +316,45 @@ describe("EvaluationService", () => {
         expect(result).toMatchObject({ matched: true, action: "redirect", reason: "rule_matched" });
     });
 
-    it("returns the original Rule Engine decision when frequency allows triggering", async () => {
+    it("returns a normalized safe Rule Engine decision when frequency allows triggering", async () => {
         const dependencies = makeDependencies();
         const decision = matchedDecision();
         dependencies.ruleEngine.evaluateRules.mockReturnValue(decision);
 
         await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
-            .resolves.toBe(decision);
+            .resolves.toMatchObject({
+                ...decision,
+                destinationUrl: "https://example.com/",
+            });
+    });
+
+    it("suppresses an unsafe destination from a persisted rule", async () => {
+        const dependencies = makeDependencies();
+        dependencies.ruleEngine.evaluateRules.mockReturnValue(matchedDecision({
+            destinationUrl: "JaVaScRiPt:alert(1)",
+        }));
+
+        await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
+            .resolves.toEqual({
+                matched: true,
+                ruleId: "rule-1",
+                action: "none",
+                destinationUrl: null,
+                fullscreenMode: "off",
+                reason: "invalid_destination_url",
+            });
+        expect(dependencies.frequencyService.checkAndRecord).not.toHaveBeenCalled();
+    });
+
+    it("removes a destination from a matched none-action decision", async () => {
+        const dependencies = makeDependencies();
+        dependencies.ruleEngine.evaluateRules.mockReturnValue(matchedDecision({
+            action: "none",
+            destinationUrl: "https://example.com",
+        }));
+
+        await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
+            .resolves.toMatchObject({ matched: true, action: "none", destinationUrl: null });
     });
 
     it.each(["frequency_limited", "frequency_unavailable"])(
@@ -298,8 +372,44 @@ describe("EvaluationService", () => {
                     fullscreenMode: "off",
                     reason,
                 });
+            expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledWith(expect.objectContaining({
+                projectId: "project-1",
+                ruleId: "rule-1",
+                matched: true,
+                triggered: false,
+                reason,
+                action: "none",
+            }));
         },
     );
+
+    it("does not wait for a delayed event persistence promise", async () => {
+        const dependencies = makeDependencies();
+        let finishPersistence;
+        const pendingPersistence = new Promise((resolve) => {
+            finishPersistence = resolve;
+        });
+        dependencies.eventLoggingService.logEvaluationEvent.mockReturnValue(pendingPersistence);
+
+        const result = await createService(dependencies).evaluate({ projectKey: "public-project-key" });
+
+        expect(result).toMatchObject({ matched: true, action: "redirect" });
+        expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledTimes(1);
+        finishPersistence();
+    });
+
+    it("keeps evaluation successful when event logging rejects", async () => {
+        const dependencies = makeDependencies();
+        dependencies.eventLoggingService.logEvaluationEvent.mockRejectedValue(new Error("event DB failed"));
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        await expect(createService(dependencies).evaluate({ projectKey: "public-project-key" }))
+            .resolves.toMatchObject({ matched: true, action: "redirect" });
+        await Promise.resolve();
+
+        expect(consoleError).toHaveBeenCalledWith("Evaluation event logging failed.");
+        consoleError.mockRestore();
+    });
 
     it("does not create an identity from client data if the server IP is missing", async () => {
         const dependencies = makeDependencies();
