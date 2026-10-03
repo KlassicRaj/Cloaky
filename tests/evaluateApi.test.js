@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 const request = require("supertest");
 const { createApp } = require("../src/server");
 
+const projectKey = "public-project-key";
+const allowedOrigin = "https://allowed.example";
+
 const validBody = {
-    projectKey: "public-project-key",
     browser: "Chrome",
     os: "Linux",
     deviceType: "desktop",
@@ -22,14 +24,24 @@ const decision = {
     reason: "rule_matched",
 };
 
-function createTestApp(result = decision) {
+function createTestApp(result = decision, { allowedOrigins = [allowedOrigin], project = {} } = {}) {
     const evaluationService = {
         evaluate: vi.fn().mockResolvedValue(result),
     };
+    const projectRepository = {
+        findByProjectKey: vi.fn().mockResolvedValue({
+            id: "project-1",
+            project_key: projectKey,
+            allowed_origins: allowedOrigins,
+            enabled: true,
+            ...project,
+        }),
+    };
 
     return {
-        app: createApp({ evaluationService }),
+        app: createApp({ evaluationService, projectRepository }),
         evaluationService,
+        projectRepository,
     };
 }
 
@@ -38,8 +50,8 @@ describe("POST /api/v1/evaluate", () => {
         const { app } = createTestApp();
 
         await request(app)
-            .post("/api/v1/evaluate")
-            .send({})
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send({ screen: { width: 0 } })
             .expect(400)
             .expect(({ body }) => expect(body.error).toBe("validation_error"));
     });
@@ -47,11 +59,14 @@ describe("POST /api/v1/evaluate", () => {
     it("returns 200 with the EvaluationService decision", async () => {
         const { app, evaluationService } = createTestApp();
 
-        const response = await request(app).post("/api/v1/evaluate").send(validBody).expect(200);
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send(validBody)
+            .expect(200);
 
         expect(response.body).toEqual(decision);
         expect(evaluationService.evaluate).toHaveBeenCalledWith(expect.objectContaining({
-            projectKey: "public-project-key",
+            projectKey,
             clientInfo: expect.objectContaining({ browser: "Chrome", screen: validBody.screen }),
         }));
         expect(evaluationService.evaluate.mock.calls[0][0].request).toBeDefined();
@@ -60,7 +75,7 @@ describe("POST /api/v1/evaluate", () => {
     it("requires projectKey", async () => {
         const { app, evaluationService } = createTestApp();
 
-        await request(app).post("/api/v1/evaluate").send({ browser: "Chrome" }).expect(400);
+        await request(app).post("/api/v1/evaluate").send(validBody).expect(400);
         expect(evaluationService.evaluate).not.toHaveBeenCalled();
     });
 
@@ -73,7 +88,10 @@ describe("POST /api/v1/evaluate", () => {
     ])("rejects invalid %s", async (_field, values) => {
         const { app } = createTestApp();
 
-        await request(app).post("/api/v1/evaluate").send({ ...validBody, ...values }).expect(400);
+        await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send({ ...validBody, ...values })
+            .expect(400);
     });
 
     it.each(["ip", "country", "region", "city"])(
@@ -83,6 +101,7 @@ describe("POST /api/v1/evaluate", () => {
 
             await request(app)
                 .post("/api/v1/evaluate")
+                .query({ projectKey })
                 .send({ ...validBody, [field]: "client-controlled" })
                 .expect(400);
         },
@@ -96,7 +115,10 @@ describe("POST /api/v1/evaluate", () => {
         };
         const { app } = createTestApp(internalResult);
 
-        const response = await request(app).post("/api/v1/evaluate").send(validBody).expect(200);
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send(validBody)
+            .expect(200);
 
         expect(response.body).toEqual(decision);
         expect(JSON.stringify(response.body)).not.toContain("203.0.113.10");
@@ -115,6 +137,7 @@ describe("POST /api/v1/evaluate", () => {
 
         await request(app)
             .post("/api/v1/evaluate")
+            .query({ projectKey })
             .send(validBody)
             .expect(404)
             .expect(({ body }) => expect(body.reason).toBe("project_not_found"));
@@ -127,7 +150,10 @@ describe("POST /api/v1/evaluate", () => {
         };
         const testApp = createApp({ evaluationService });
 
-        const response = await request(testApp).post("/api/v1/evaluate").send(validBody).expect(500);
+        const response = await request(testApp)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send(validBody)
+            .expect(500);
 
         expect(response.body).toEqual({ error: "internal_error" });
         expect(JSON.stringify(response.body)).not.toContain("sensitive internal failure");
@@ -139,5 +165,107 @@ describe("POST /api/v1/evaluate", () => {
         await request(app).get("/health").expect(200).expect(({ body }) => {
             expect(body).toMatchObject({ status: "ok", database: "ok" });
         });
+    });
+
+    it("returns exact-origin CORS headers for an allowed origin", async () => {
+        const { app } = createTestApp();
+
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", allowedOrigin)
+            .send(validBody)
+            .expect(200);
+
+        expect(response.headers["access-control-allow-origin"]).toBe(allowedOrigin);
+        expect(response.headers.vary).toContain("Origin");
+        expect(response.headers["access-control-allow-methods"]).toBe("POST, OPTIONS");
+        expect(response.headers["access-control-allow-headers"]).toBe("Content-Type");
+    });
+
+    it("rejects a disallowed origin without reflecting it", async () => {
+        const { app, evaluationService } = createTestApp();
+        const arbitraryOrigin = "https://attacker.example";
+
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", arbitraryOrigin)
+            .send(validBody)
+            .expect(403);
+
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+        expect(response.headers["access-control-allow-origin"]).not.toBe(arbitraryOrigin);
+        expect(evaluationService.evaluate).not.toHaveBeenCalled();
+    });
+
+    it("continues requests without an Origin and adds no CORS headers", async () => {
+        const { app } = createTestApp();
+
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send(validBody)
+            .expect(200);
+
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+    });
+
+    it("handles allowed OPTIONS preflight without invoking EvaluationService", async () => {
+        const { app, evaluationService } = createTestApp();
+
+        const response = await request(app)
+            .options(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", allowedOrigin)
+            .set("Access-Control-Request-Method", "POST")
+            .expect(204);
+
+        expect(response.headers["access-control-allow-origin"]).toBe(allowedOrigin);
+        expect(response.headers["access-control-allow-methods"]).toBe("POST, OPTIONS");
+        expect(response.headers["access-control-allow-headers"]).toBe("Content-Type");
+        expect(evaluationService.evaluate).not.toHaveBeenCalled();
+    });
+
+    it("rejects disallowed OPTIONS preflight", async () => {
+        const { app, evaluationService } = createTestApp();
+
+        const response = await request(app)
+            .options(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", "https://attacker.example")
+            .expect(403);
+
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+        expect(evaluationService.evaluate).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 when an origin references a nonexistent project", async () => {
+        const { app, projectRepository, evaluationService } = createTestApp();
+        projectRepository.findByProjectKey.mockResolvedValue(null);
+
+        await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", allowedOrigin)
+            .send(validBody)
+            .expect(404);
+        expect(evaluationService.evaluate).not.toHaveBeenCalled();
+    });
+
+    it("does not treat wildcard allowed_origins as allowing arbitrary origins", async () => {
+        const { app } = createTestApp(decision, { allowedOrigins: ["*"] });
+
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .set("Origin", "https://arbitrary.example")
+            .send(validBody)
+            .expect(403);
+
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+    });
+
+    it("rejects projectKey in the JSON body even when it is also in the query", async () => {
+        const { app, evaluationService } = createTestApp();
+
+        await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send({ ...validBody, projectKey })
+            .expect(400);
+        expect(evaluationService.evaluate).not.toHaveBeenCalled();
     });
 });

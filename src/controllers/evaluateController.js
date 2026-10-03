@@ -1,8 +1,23 @@
 const { createDecision } = require("../domain/decision");
-const { evaluateRequestSchema } = require("../validation/evaluateValidation");
+const {
+    evaluateProjectKeySchema,
+    evaluateRequestSchema,
+} = require("../validation/evaluateValidation");
 
 function createEvaluateController({ evaluationService }) {
     return async function evaluateController(req, res, next) {
+        const projectKeyValidation = evaluateProjectKeySchema.safeParse(req.query.projectKey);
+        if (!projectKeyValidation.success) {
+            return res.status(400).json({
+                error: "validation_error",
+                details: projectKeyValidation.error.issues.map(({ code, message, path }) => ({
+                    code,
+                    message,
+                    path: ["projectKey", ...path],
+                })),
+            });
+        }
+
         const validation = evaluateRequestSchema.safeParse(req.body);
         if (!validation.success) {
             return res.status(400).json({
@@ -15,11 +30,11 @@ function createEvaluateController({ evaluationService }) {
             });
         }
 
-        const { projectKey, ...clientInfo } = validation.data;
+        const clientInfo = validation.data;
 
         try {
             const result = await evaluationService.evaluate({
-                projectKey,
+            projectKey: projectKeyValidation.data,
                 request: req,
                 clientInfo,
             });

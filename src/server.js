@@ -13,9 +13,9 @@ const clientInfoService = require("./services/clientInfoService");
 const visitorIdentityService = require("./services/visitorIdentityService");
 const { createEvaluationService } = require("./services/evaluationService");
 
-function createRealEvaluationService() {
+function createRealEvaluationService(projectRepositoryInstance = projectRepository) {
     return createEvaluationService({
-        projectRepository,
+        projectRepository: projectRepositoryInstance,
         ruleRepository,
         clientIpService,
         geoIpService,
@@ -26,12 +26,17 @@ function createRealEvaluationService() {
     });
 }
 
-function createApp({ evaluationService = createRealEvaluationService() } = {}) {
+function createApp({ evaluationService, projectRepository: projectRepositoryInstance = projectRepository } = {}) {
     const app = express();
+    const configuredEvaluationService = evaluationService ||
+        createRealEvaluationService(projectRepositoryInstance);
 
     app.use(express.json());
     app.use(healthRouter);
-    app.use("/api/v1", createEvaluateRouter({ evaluationService }));
+    app.use("/api/v1", createEvaluateRouter({
+        evaluationService: configuredEvaluationService,
+        projectRepository: projectRepositoryInstance,
+    }));
 
     app.use((error, req, res, next) => {
         if (res.headersSent) {
