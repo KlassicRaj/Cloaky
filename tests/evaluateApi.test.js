@@ -24,6 +24,10 @@ const decision = {
     reason: "rule_matched",
 };
 
+function allowAllRateLimit(req, res, next) {
+    return next();
+}
+
 function createTestApp(result = decision, { allowedOrigins = [allowedOrigin], project = {} } = {}) {
     const evaluationService = {
         evaluate: vi.fn().mockResolvedValue(result),
@@ -39,7 +43,7 @@ function createTestApp(result = decision, { allowedOrigins = [allowedOrigin], pr
     };
 
     return {
-        app: createApp({ evaluationService, projectRepository }),
+        app: createApp({ evaluationService, projectRepository, rateLimitMiddleware: allowAllRateLimit }),
         evaluationService,
         projectRepository,
     };
@@ -148,7 +152,16 @@ describe("POST /api/v1/evaluate", () => {
         const evaluationService = {
             evaluate: vi.fn().mockRejectedValue(new Error("sensitive internal failure")),
         };
-        const testApp = createApp({ evaluationService });
+        const testApp = createApp({
+            evaluationService,
+            projectRepository: {
+                findByProjectKey: vi.fn().mockResolvedValue({
+                    id: "project-1",
+                    allowed_origins: [allowedOrigin],
+                }),
+            },
+            rateLimitMiddleware: allowAllRateLimit,
+        });
 
         const response = await request(testApp)
             .post(`/api/v1/evaluate?projectKey=${projectKey}`)

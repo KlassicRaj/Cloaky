@@ -3,6 +3,7 @@ const env = require("./config/env");
 const redis = require("./config/redis");
 const healthRouter = require("./routes/health");
 const { createEvaluateRouter } = require("./routes/evaluate");
+const { createRateLimit } = require("./middleware/rateLimit");
 const projectRepository = require("./repositories/projectRepository");
 const ruleRepository = require("./repositories/ruleRepository");
 const { evaluateRules } = require("./services/ruleEngine");
@@ -26,16 +27,26 @@ function createRealEvaluationService(projectRepositoryInstance = projectReposito
     });
 }
 
-function createApp({ evaluationService, projectRepository: projectRepositoryInstance = projectRepository } = {}) {
+function createApp({
+    evaluationService,
+    projectRepository: projectRepositoryInstance = projectRepository,
+    rateLimitMiddleware,
+} = {}) {
     const app = express();
     const configuredEvaluationService = evaluationService ||
         createRealEvaluationService(projectRepositoryInstance);
+    const configuredRateLimitMiddleware = rateLimitMiddleware || createRateLimit({
+        redisClient: redis,
+        clientIpService,
+        visitorIdentityService,
+    });
 
     app.use(express.json());
     app.use(healthRouter);
     app.use("/api/v1", createEvaluateRouter({
         evaluationService: configuredEvaluationService,
         projectRepository: projectRepositoryInstance,
+        rateLimitMiddleware: configuredRateLimitMiddleware,
     }));
 
     app.use((error, req, res, next) => {
