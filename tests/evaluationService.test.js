@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const { createEvaluationService } = require("../src/services/evaluationService");
+const { createConfigCacheService } = require("../src/services/configCacheService");
 
 function matchedDecision(overrides = {}) {
     return {
@@ -23,6 +24,11 @@ function makeDependencies(overrides = {}) {
     const rule = {
         id: "rule-1",
         project_id: project.id,
+        priority: 2,
+        enabled: true,
+        conditions: {},
+        action: "redirect",
+        destination_url: "https://example.com",
         frequency_enabled: true,
         frequency_seconds: 60,
         frequency_mode: "cooldown",
@@ -76,6 +82,43 @@ function createService(dependencies) {
 }
 
 describe("EvaluationService", () => {
+    it("loads configuration on a miss and avoids project/rule queries on the next evaluation", async () => {
+        const dependencies = makeDependencies();
+        const configCacheService = createConfigCacheService();
+        const service = createService({ ...dependencies, configCacheService });
+
+        await service.evaluate({ projectKey: "public-project-key" });
+        const cachedConfiguration = configCacheService.get("public-project-key");
+        await service.evaluate({ projectKey: "public-project-key" });
+
+        expect(dependencies.projectRepository.findByProjectKey).toHaveBeenCalledTimes(1);
+        expect(dependencies.ruleRepository.listByProjectId).toHaveBeenCalledTimes(1);
+        expect(cachedConfiguration).toMatchObject({
+            project: {
+                id: "project-1",
+                project_key: "public-project-key",
+                enabled: true,
+            },
+            rules: [{ id: "rule-1", priority: 2 }],
+        });
+        expect(dependencies.ruleEngine.evaluateRules).toHaveBeenCalledTimes(2);
+        expect(dependencies.ruleEngine.evaluateRules.mock.calls[1][1]).toEqual(cachedConfiguration.rules);
+    });
+
+    it("falls back to the repositories when cache access fails", async () => {
+        const dependencies = makeDependencies();
+        const configCacheService = {
+            get: vi.fn(() => { throw new Error("cache unavailable"); }),
+            set: vi.fn(() => { throw new Error("cache unavailable"); }),
+        };
+
+        await expect(createService({ ...dependencies, configCacheService })
+            .evaluate({ projectKey: "public-project-key" }))
+            .resolves.toMatchObject({ matched: true, action: "redirect" });
+        expect(dependencies.projectRepository.findByProjectKey).toHaveBeenCalledTimes(1);
+        expect(dependencies.ruleRepository.listByProjectId).toHaveBeenCalledTimes(1);
+    });
+
     it("returns project_not_found when the project does not exist", async () => {
         const dependencies = makeDependencies();
         dependencies.projectRepository.findByProjectKey.mockResolvedValue(null);

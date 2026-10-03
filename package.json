@@ -11,7 +11,8 @@
     "db:migrate": "knex --knexfile knexfile.js migrate:latest",
     "db:rollback": "knex --knexfile knexfile.js migrate:rollback",
     "db:status": "knex --knexfile knexfile.js migrate:list",
-    "db:create": "knex --knexfile knexfile.js migrate:make"
+    "db:create": "knex --knexfile knexfile.js migrate:make",
+    "admin:provision": "node scripts/provisionAdmin.js"
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,7 @@
   },
   "homepage": "https://github.com/KlassicRaj/Cloaky#readme",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",

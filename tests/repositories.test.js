@@ -270,12 +270,53 @@ describe("eventRepository", () => {
 		const allEvents = await eventRepository.listByProjectId(project.id);
 		expect(allEvents.map(({ id }) => id)).toEqual([newest.id, middle.id, oldest.id]);
 		expect(allEvents[0]).toMatchObject({ id: newest.id, reason: "newest" });
+		expect(Object.keys(allEvents[0]).sort()).toEqual([
+			"action",
+			"browser",
+			"country",
+			"created_at",
+			"device_type",
+			"id",
+			"matched",
+			"os",
+			"project_id",
+			"reason",
+			"region",
+			"rule_id",
+			"triggered",
+		]);
 
 		const limitedEvents = await eventRepository.listByProjectId(project.id, { limit: 2 });
 		expect(limitedEvents.map(({ id }) => id)).toEqual([newest.id, middle.id]);
 
 		const offsetEvents = await eventRepository.listByProjectId(project.id, { offset: 1 });
 		expect(offsetEvents.map(({ id }) => id)).toEqual([middle.id, oldest.id]);
+		await expect(eventRepository.countByProjectId(project.id)).resolves.toBe(3);
+	});
+
+	it("orders events with matching timestamps by descending ID", async () => {
+		const user = await createUser();
+		const project = await createProject(user);
+		const createdAt = new Date().toISOString();
+		const lowerId = await createEvent(project, {
+			id: "00000000-0000-4000-8000-000000000001",
+			created_at: createdAt,
+		});
+		const higherId = await createEvent(project, {
+			id: "00000000-0000-4000-8000-000000000002",
+			created_at: createdAt,
+		});
+
+		await expect(eventRepository.listByProjectId(project.id))
+			.resolves.toMatchObject([{ id: higherId.id }, { id: lowerId.id }]);
+		await expect(eventRepository.countByProjectId(project.id)).resolves.toBe(2);
+	});
+
+	it("counts no events for an empty project", async () => {
+		const user = await createUser();
+		const project = await createProject(user);
+
+		await expect(eventRepository.countByProjectId(project.id)).resolves.toBe(0);
 	});
 });
 

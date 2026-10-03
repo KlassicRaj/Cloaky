@@ -103,9 +103,60 @@ function createEvaluationService({
     frequencyService,
     ruleEngine,
     eventLoggingService,
+    configCacheService,
 }) {
     async function evaluate({ projectKey, request, clientInfo } = {}) {
-        const project = await projectRepository.findByProjectKey(projectKey);
+        let configuration;
+        if (configCacheService && typeof configCacheService.get === "function") {
+            try {
+                configuration = configCacheService.get(projectKey);
+            } catch {
+                configuration = undefined;
+            }
+        }
+
+        if (!configuration || !configuration.project || !Array.isArray(configuration.rules)) {
+            const project = await projectRepository.findByProjectKey(projectKey);
+            if (!project) {
+                return createDecision({ reason: "project_not_found" });
+            }
+
+            const rules = project.enabled === false
+                ? []
+                : await ruleRepository.listByProjectId(project.id);
+            configuration = {
+                project: {
+                    id: project.id,
+                    project_key: project.project_key,
+                    enabled: project.enabled,
+                    allowed_origins: project.allowed_origins,
+                },
+                rules: rules.map((rule) => ({
+                    id: rule.id,
+                    project_id: rule.project_id,
+                    name: rule.name,
+                    priority: rule.priority,
+                    enabled: rule.enabled,
+                    conditions: rule.conditions,
+                    action: rule.action,
+                    destination_url: rule.destination_url,
+                    frequency_enabled: rule.frequency_enabled,
+                    frequency_seconds: rule.frequency_seconds,
+                    frequency_mode: rule.frequency_mode,
+                    fullscreen_mode: rule.fullscreen_mode,
+                })),
+            };
+
+            if (configCacheService && typeof configCacheService.set === "function") {
+                try {
+                    configCacheService.set(projectKey, configuration);
+                } catch {
+                    // The cache is an optimization; continue with the database result.
+                }
+            }
+        }
+
+        const { project, rules } = configuration;
         if (!project) {
             return createDecision({ reason: "project_not_found" });
         }
@@ -116,7 +167,6 @@ function createEvaluationService({
             return decision;
         }
 
-        const rules = await ruleRepository.listByProjectId(project.id);
         const clientIp = await clientIpService.getClientIp(request);
 
         let geo = emptyGeo();

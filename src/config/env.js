@@ -20,6 +20,8 @@ const envSchema = z.object({
 
     ADMIN_PASSWORD_HASH: z.string().optional().default(""),
 
+    SESSION_SECRET: z.string().optional().default(""),
+
     IP_HASH_SECRET: z.string().optional().default(""),
 
     GEOIP_DATABASE_PATH: z.string().optional().default(""),
@@ -43,6 +45,15 @@ const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
     console.error("Invalid environment configuration:");
     console.error(parsed.error.flatten().fieldErrors);
+    process.exit(1);
+}
+
+if (
+    parsed.data.NODE_ENV !== "test" &&
+    Buffer.byteLength(parsed.data.SESSION_SECRET, "utf8") < 32
+) {
+    console.error("Invalid environment configuration:");
+    console.error({ SESSION_SECRET: ["Must contain at least 32 bytes outside test mode"] });
     process.exit(1);
 }
 

@@ -1,16 +1,17 @@
 # TODO
 
-## Phase 0
+## Completed
 
-- [ ] Choose AI coding agent
-- [ ] Configure development environment
+- [x] Backend foundation, database schema, migrations, and repositories
+- [x] RuleEngine, frequency, GeoIP, client identity, and normalization services
+- [x] Public evaluation API, CORS, and rate limiting
+- [x] SDK foundation and redirect endpoint
+- [x] Project/rule CRUD and configuration caching
+- [x] bcrypt authentication, signed sessions, admin provisioning, and session-protected management APIs
+- [x] Authenticated Events API with project ownership checks and paginated analytics data
 
-## Phase 1
+## Remaining
 
-- [ ] Project skeleton
-- [ ] Node.js application
-- [ ] Docker Compose
-- [ ] PostgreSQL connection
-- [ ] Redis connection
-- [ ] Configuration
-- [ ] Health endpoint
+- [ ] Dashboard/login interface
+- [ ] Events dashboard
+- [ ] Production hardening and load testing
