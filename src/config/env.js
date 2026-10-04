@@ -1,5 +1,11 @@
 const { z } = require("zod");
-require("dotenv").config();
+const path = require("node:path");
+const isTestEnvironment = process.env.NODE_ENV === "test";
+
+require("dotenv").config({
+    path: path.resolve(process.cwd(), isTestEnvironment ? ".env.test" : ".env"),
+    override: isTestEnvironment,
+});
 
 const envSchema = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -13,6 +19,8 @@ const envSchema = z.object({
     ADMIN_USERNAME: z.string().min(1),
 
     ADMIN_PASSWORD_HASH: z.string().optional().default(""),
+
+    SESSION_SECRET: z.string().optional().default(""),
 
     IP_HASH_SECRET: z.string().optional().default(""),
 
@@ -32,11 +40,58 @@ const envSchema = z.object({
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const environmentSchema = envSchema.superRefine((configuration, context) => {
+    if (configuration.NODE_ENV !== "production") {
+        return;
+    }
+
+    if (configuration.COOKIE_SECURE !== true) {
+        context.addIssue({
+            code: "custom",
+            path: ["COOKIE_SECURE"],
+            message: "Must be true in production",
+        });
+    }
+
+    if (Buffer.byteLength(configuration.IP_HASH_SECRET, "utf8") < 32) {
+        context.addIssue({
+            code: "custom",
+            path: ["IP_HASH_SECRET"],
+            message: "Must contain at least 32 bytes in production",
+        });
+    }
+
+    if (configuration.IP_HASH_SECRET === configuration.SESSION_SECRET) {
+        context.addIssue({
+            code: "custom",
+            path: ["IP_HASH_SECRET"],
+            message: "Must be distinct from SESSION_SECRET",
+        });
+    }
+
+    if (new URL(configuration.BASE_URL).protocol !== "https:") {
+        context.addIssue({
+            code: "custom",
+            path: ["BASE_URL"],
+            message: "Must use HTTPS in production",
+        });
+    }
+});
+
+const parsed = environmentSchema.safeParse(process.env);
 
 if (!parsed.success) {
     console.error("Invalid environment configuration:");
     console.error(parsed.error.flatten().fieldErrors);
+    process.exit(1);
+}
+
+if (
+    parsed.data.NODE_ENV !== "test" &&
+    Buffer.byteLength(parsed.data.SESSION_SECRET, "utf8") < 32
+) {
+    console.error("Invalid environment configuration:");
+    console.error({ SESSION_SECRET: ["Must contain at least 32 bytes outside test mode"] });
     process.exit(1);
 }
 

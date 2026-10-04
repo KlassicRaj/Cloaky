@@ -25,7 +25,7 @@ The system must support:
 - no action
 - frequency limits
 - IP-based GeoIP
-- optional browser geolocation
+- server-side GeoIP location
 - fullscreen prompt
 - server-side redirect endpoint
 - event logging
@@ -500,16 +500,19 @@ IP location is approximate and must never be presented as GPS-level accuracy.
 
 The SDK must remain a small standalone JavaScript file.
 
-Example:
+Example integration for local development:
 
 ```html
-<script
-    async
-    src="https://YOUR_DOMAIN/sdk.v1.js"
-    data-project="PROJECT_PUBLIC_KEY">
+<script src="http://localhost:3000/sdk.js"></script>
+<script>
+  VisitorRouting.init({
+    projectKey: "tester12340"
+  });
 </script>
 
 ```
+
+In deployment, load the SDK from the Visitor Routing server's public hostname (for example, `https://routing.example.com/sdk.v1.js`). The SDK captures its own script URL while it loads and sends evaluation requests to that server origin, even when the customer page is hosted on a different origin. It does not derive the API host from the customer page URL.
 
 The SDK collects:
 
@@ -544,33 +547,9 @@ The SDK must:
 
 # 13. Browser geolocation
 
-Only request browser geolocation if a project rule actually requires it.
+Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission.
 
-Use the normal browser permission prompt.
-
-Never:
-
-- bypass the permission prompt
-- repeatedly request permission
-- secretly collect location
-
-If permission is denied:
-
-continue with available information.
-
-Clearly distinguish:
-
-```text
-geo.*
-
-```
-
-from:
-
-```text
-browser_geo.*
-
-```
+Do not expose browser geolocation as a supported SDK, rule-builder, or Test Rules input. Legacy internal parsing may remain for backward compatibility, but the production request path must not collect or use browser-provided coordinates.
 
 ---
 
@@ -675,8 +654,8 @@ Do not rely only on frontend validation.
 Each rule has:
 
 ```text
-fullscreen = off
-fullscreen = prompt
+fullscreenMode = off
+fullscreenMode = prompt
 
 ```
 
@@ -684,17 +663,10 @@ Respect browser restrictions.
 
 Fullscreen cannot automatically happen after redirect.
 
-When:
+When `fullscreenMode` is `prompt`, set the `_fs=1` query parameter on the validated destination URL, preserving other query parameters and the URL fragment. Use the same marker for redirects and open-new-tab actions. When fullscreen mode is `off`, leave the destination unchanged.
 
 ```text
-fullscreen = prompt
-
-```
-
-append a marker such as:
-
-```text
-?_fs=1
+https://example.com/page?foo=bar&_fs=1#section
 
 ```
 
@@ -711,14 +683,14 @@ View full screen
 
 The visitor must click the button.
 
-Then call:
+Use the standard API, with WebKit fallback where applicable, only inside the button's click/tap handler:
 
 ```javascript
 document.documentElement.requestFullscreen()
 
 ```
 
-with WebKit fallback where applicable.
+A rejected request dismisses the prompt without affecting the page. Do not request fullscreen automatically.
 
 Never:
 
@@ -727,7 +699,7 @@ Never:
 - use keyboard lock
 - fake browser fullscreen UI
 
-If fullscreen is unsupported, hide the control.
+If fullscreen is unsupported, hide the prompt.
 
 ---
 
@@ -1337,9 +1309,9 @@ rather than repeatedly triggering redirects.
 
 Continue returning the evaluation response.
 
-### Browser geolocation unavailable
+### Browser geolocation
 
-Continue using available visitor information.
+The SDK never requests browser geolocation. Continue using server-side GeoIP and other available visitor information.
 
 ### Fullscreen unsupported
 
