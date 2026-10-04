@@ -500,16 +500,19 @@ IP location is approximate and must never be presented as GPS-level accuracy.
 
 The SDK must remain a small standalone JavaScript file.
 
-Example:
+Example integration for local development:
 
 ```html
-<script
-    async
-    src="https://YOUR_DOMAIN/sdk.v1.js"
-    data-project="PROJECT_PUBLIC_KEY">
+<script src="http://localhost:3000/sdk.js"></script>
+<script>
+  VisitorRouting.init({
+    projectKey: "tester12340"
+  });
 </script>
 
 ```
+
+In deployment, load the SDK from the Visitor Routing server's public hostname (for example, `https://routing.example.com/sdk.v1.js`). The SDK captures its own script URL while it loads and sends evaluation requests to that server origin, even when the customer page is hosted on a different origin. It does not derive the API host from the customer page URL.
 
 The SDK collects:
 

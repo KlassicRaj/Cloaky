@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Step 39 — Browser geolocation de-scoping and fullscreen prompt
+Step 40 — Complete Project Management UI
 
 ## Completed
 
@@ -21,6 +21,7 @@ Step 39 — Browser geolocation de-scoping and fullscreen prompt
 - [x] Authenticated Test Rules API and project-page visitor simulation UI
 - [x] Browser geolocation removed from public inputs and product scope
 - [x] Fullscreen prompt signaling and explicit-click SDK UI
+- [x] Project edit and confirmed delete controls on project details
 
 ## Remaining
 
@@ -30,3 +31,5 @@ Step 39 — Browser geolocation de-scoping and fullscreen prompt
 ## Tests
 
 Step 39 verification: `npm test` passes all 513 tests across 24 test files. Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission. Fullscreen prompting uses `_fs=1` on validated redirect/open-new-tab destinations and requires an explicit visitor click.
+
+Step 40: Project owners can edit project name, allowed origins, and enabled status, or delete projects with explicit cascade confirmation. Project key is displayed read-only because PATCH validation does not permit changing it. Backend ownership, cache invalidation, and cascades are reused.

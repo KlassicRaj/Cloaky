@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/assets/css/app.css">
     <script src="/assets/js/api.js" defer></script>
     <script src="/assets/js/rule-builder.js" defer></script>
+    <script src="/assets/js/project-management.js" defer></script>
     <script src="/assets/js/project.js" defer></script>
     <script src="/assets/js/test-rules.js" defer></script>
 </head>
@@ -34,7 +35,14 @@
                 <span id="project-enabled" class="status-badge"></span>
             </div>
             <section id="project-overview" class="panel details-panel" aria-labelledby="details-title">
-                <h2 id="details-title">Details</h2>
+                <div class="section-heading">
+                    <h2 id="details-title">Details</h2>
+                    <div class="project-management-actions">
+                        <button id="edit-project-button" class="button-secondary" type="button">Edit Project</button>
+                        <button id="delete-project-button" class="button-danger" type="button">Delete Project</button>
+                    </div>
+                </div>
+                <p id="project-management-message" class="message" role="status" hidden></p>
                 <dl class="details-list">
                     <dt>Project key</dt>
                     <dd id="project-key"></dd>
@@ -43,6 +51,33 @@
                     <dt>Allowed origins</dt>
                     <dd><ul id="project-origins" class="origin-list"></ul></dd>
                 </dl>
+                <section id="project-editor" class="project-editor" aria-labelledby="project-editor-heading" hidden>
+                    <h3 id="project-editor-heading">Edit Project</h3>
+                    <form id="project-edit-form" class="form-stack" novalidate>
+                        <label for="project-edit-name">Project name</label>
+                        <input id="project-edit-name" name="name" maxlength="150" required>
+
+                        <label for="project-edit-key">Project key</label>
+                        <input id="project-edit-key" name="projectKey" readonly aria-describedby="project-key-help">
+                        <p id="project-key-help" class="field-hint">Project keys cannot be changed after creation.</p>
+
+                        <label for="project-edit-origins">Allowed origins</label>
+                        <textarea id="project-edit-origins" name="allowedOrigins" rows="4" placeholder="https://example.com&#10;https://www.example.com"></textarea>
+                        <p class="field-hint">Enter one HTTP or HTTPS origin per line. The server validates each origin.</p>
+
+                        <label for="project-edit-enabled">Status</label>
+                        <select id="project-edit-enabled" name="enabled">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
+
+                        <p id="project-editor-message" class="message error-message" role="alert" hidden></p>
+                        <div class="project-editor-actions">
+                            <button id="save-project-button" type="submit">Save Changes</button>
+                            <button id="cancel-project-edit" class="button-secondary" type="button">Cancel</button>
+                        </div>
+                    </form>
+                </section>
             </section>
             <section id="rules-section" class="dashboard-section" aria-labelledby="rules-heading">
                 <div class="section-heading">

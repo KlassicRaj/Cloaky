@@ -43,3 +43,12 @@
 - Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission. Browser coordinates are excluded from public evaluation/Test Rules validation and the Rule Builder; legacy domain normalization and RuleEngine getters remain only for compatibility with internal callers or already-stored rules.
 - Fullscreen prompting is opt-in through each rule's existing `fullscreenMode` value. After HTTP/HTTPS destination validation, redirect and SDK open-new-tab actions set `_fs=1` using the URL API, preserving other query parameters and fragments. Mode `off` does not add the marker.
 - The destination SDK displays a dismissible prompt only when `_fs=1` is present and fullscreen is supported. `requestFullscreen()` or its WebKit equivalent is called only directly from the visitor's button click handler. The SDK never automatically enters fullscreen; failure or dismissal removes the prompt, and normal browser fullscreen controls (including Escape) remain untouched.
+
+## SDK API Origin
+
+- The SDK captures the currently executing script's absolute HTTP(S) URL during script evaluation and constructs evaluation requests using that script URL's origin. It never falls back to the customer page's location. If the executing script URL cannot be captured or parsed, evaluation stops safely without a request. `projectKey` is encoded through `URLSearchParams` and remains subject to the API's 200-character validation limit.
+
+## Project Management UI
+
+- The project details page exposes the existing owner-authenticated PATCH and DELETE APIs. Editing supports only name, allowed origins, and enabled state; project key is read-only because the backend PATCH schema intentionally rejects it. Origins are sent as an array and remain server-validated.
+- Project deletion requires browser confirmation that associated rules and events are removed, then navigates to the dashboard, whose normal initialization reloads the project list. The UI relies on existing project-service ownership checks, cache invalidation, and PostgreSQL cascades; it maintains no separate project cache.

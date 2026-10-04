@@ -3,6 +3,22 @@
 
     var initializationPromise = null;
     var popupFallbackHandler = null;
+    var sdkOrigin = null;
+
+    try {
+        var currentScript = global.document && global.document.currentScript;
+        if (currentScript && typeof currentScript.src === "string" && currentScript.src.trim()) {
+            var scriptUrl = new global.URL(currentScript.src);
+            if (
+                (scriptUrl.protocol === "http:" || scriptUrl.protocol === "https:") &&
+                scriptUrl.origin !== "null"
+            ) {
+                sdkOrigin = scriptUrl.origin;
+            }
+        }
+    } catch (_error) {
+        sdkOrigin = null;
+    }
 
     function detectBrowser(userAgent) {
         var agent = userAgent.toLowerCase();
@@ -78,17 +94,19 @@
     }
 
     function getEvaluationUrl(projectKey) {
-        var scriptUrl = global.document && global.document.currentScript && global.document.currentScript.src;
-        var baseUrl = typeof scriptUrl === "string" && scriptUrl
-            ? scriptUrl
-            : global.location && global.location.href;
-
-        if (!baseUrl || typeof global.URL !== "function") {
+        if (
+            typeof projectKey !== "string" ||
+            projectKey.length === 0 ||
+            projectKey.length > 200 ||
+            typeof sdkOrigin !== "string" ||
+            !sdkOrigin ||
+            typeof global.URL !== "function"
+        ) {
             return null;
         }
 
         try {
-            var url = new global.URL("/api/v1/evaluate", baseUrl);
+            var url = new global.URL("/api/v1/evaluate", sdkOrigin);
             url.searchParams.set("projectKey", projectKey);
             return url.toString();
         } catch (_error) {
@@ -361,7 +379,7 @@
             var projectKey = options && typeof options.projectKey === "string"
                 ? options.projectKey.trim()
                 : "";
-            if (!projectKey || typeof global.fetch !== "function") {
+            if (!projectKey || projectKey.length > 200 || typeof global.fetch !== "function") {
                 return Promise.resolve(null);
             }
 

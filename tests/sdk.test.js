@@ -207,16 +207,20 @@ describe("browser SDK", () => {
     });
 
     it("sends the expected POST payload to the SDK host with projectKey in the query", async () => {
-        const browser = createBrowser();
-        await browser.window.VisitorRouting.init({ projectKey: "key with spaces" });
+        const browser = createBrowser({
+            scriptUrl: "http://localhost:3000/sdk.js",
+            locationHref: "http://127.0.0.1:5500/index.html",
+        });
+        await browser.window.VisitorRouting.init({ projectKey: "tester12340" });
 
         const [url, options] = browser.fetch.mock.calls[0];
         const parsedUrl = new URL(url);
         const payload = JSON.parse(options.body);
 
-        expect(parsedUrl.origin).toBe("https://api.example.test");
+        expect(url).toBe("http://localhost:3000/api/v1/evaluate?projectKey=tester12340");
+        expect(parsedUrl.origin).toBe("http://localhost:3000");
         expect(parsedUrl.pathname).toBe("/api/v1/evaluate");
-        expect(parsedUrl.searchParams.get("projectKey")).toBe("key with spaces");
+        expect(parsedUrl.searchParams.get("projectKey")).toBe("tester12340");
         expect(options.method).toBe("POST");
         expect(options.headers).toEqual({ "Content-Type": "application/json" });
         expect(options.credentials).toBe("omit");
@@ -228,6 +232,87 @@ describe("browser SDK", () => {
             timezone: "America/New_York",
             screen: { width: 1440, height: 900 },
         });
+    });
+
+    it.each([
+        [
+            "same-origin",
+            "http://localhost:3000/sdk.js",
+            "http://localhost:3000/example.html",
+            "http://localhost:3000/api/v1/evaluate?projectKey=tester12340",
+        ],
+        [
+            "production-style cross-origin",
+            "https://routing.example.com/sdk.js",
+            "https://customer.example.com/",
+            "https://routing.example.com/api/v1/evaluate?projectKey=tester12340",
+        ],
+    ])("constructs the API URL from the SDK origin for %s pages", async (_label, scriptUrl, locationHref, expectedUrl) => {
+        const browser = createBrowser({ scriptUrl, locationHref });
+
+        await browser.window.VisitorRouting.init({ projectKey: "tester12340" });
+
+        expect(browser.fetch.mock.calls[0][0]).toBe(expectedUrl);
+    });
+
+    it("keeps special project-key characters inside the encoded query parameter", async () => {
+        const browser = createBrowser({
+            scriptUrl: "http://localhost:3000/nested/sdk.js",
+            locationHref: "http://127.0.0.1:5500/index.html",
+        });
+
+        await browser.window.VisitorRouting.init({ projectKey: "tester & value?x=1" });
+
+        const requestUrl = browser.fetch.mock.calls[0][0];
+        const parsedUrl = new URL(requestUrl);
+        expect(parsedUrl.origin).toBe("http://localhost:3000");
+        expect(parsedUrl.pathname).toBe("/api/v1/evaluate");
+        expect(parsedUrl.searchParams.get("projectKey")).toBe("tester & value?x=1");
+        expect(parsedUrl.searchParams.get("x")).toBeNull();
+    });
+
+    it("uses the SDK script URL captured at load when currentScript is unavailable at init", async () => {
+        const browser = createBrowser({
+            scriptUrl: "http://localhost:3000/sdk.js",
+            locationHref: "http://127.0.0.1:5500/index.html",
+        });
+        browser.document.currentScript = null;
+
+        await browser.window.VisitorRouting.init({ projectKey: "tester12340" });
+
+        expect(browser.fetch.mock.calls[0][0])
+            .toBe("http://localhost:3000/api/v1/evaluate?projectKey=tester12340");
+    });
+
+    it("does not use the customer page origin when no script URL was captured", async () => {
+        const browser = createBrowser({
+            scriptUrl: null,
+            locationHref: "http://127.0.0.1:5500/index.html",
+        });
+        browser.document.currentScript = { src: "http://localhost:3000/sdk.js" };
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "tester12340" })).resolves.toBeNull();
+
+        expect(browser.fetch).not.toHaveBeenCalled();
+    });
+
+    it("fails safely for malformed SDK script URLs", async () => {
+        const browser = createBrowser({
+            scriptUrl: "http://[",
+            locationHref: "http://127.0.0.1:5500/index.html",
+        });
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "tester12340" })).resolves.toBeNull();
+
+        expect(browser.fetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects project keys longer than the API's 200-character limit without fetching", async () => {
+        const browser = createBrowser();
+
+        await expect(browser.window.VisitorRouting.init({ projectKey: "x".repeat(201) })).resolves.toBeNull();
+
+        expect(browser.fetch).not.toHaveBeenCalled();
     });
 
     it("does not send IP, GeoIP fields, or visitor identity", async () => {

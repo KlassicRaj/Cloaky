@@ -31,6 +31,11 @@ describe("dashboard frontend routes", () => {
 
         expect(response.type).toBe("text/html");
         expect(response.text).toContain('id="project-name"');
+        expect(response.text).toContain('id="edit-project-button"');
+        expect(response.text).toContain('id="delete-project-button"');
+        expect(response.text).toContain('id="project-edit-form"');
+        expect(response.text).toContain('id="project-edit-key" name="projectKey" readonly');
+        expect(response.text).toContain('/assets/js/project-management.js');
         expect(response.text).toContain('id="test-rules-section"');
         expect(response.text).toContain('href="#test-rules-section"');
         expect(response.text).toContain('id="test-rules-form"');
@@ -51,6 +56,10 @@ describe("dashboard frontend routes", () => {
         expect(ruleBuilder.text).toContain("serializeConditions");
         const testRules = await request(app).get("/assets/js/test-rules.js").expect(200);
         expect(testRules.text).toContain("/test-rules");
+        const projectManagement = await request(app).get("/assets/js/project-management.js").expect(200);
+        expect(projectManagement.text).toContain('method: "PATCH"');
+        expect(projectManagement.text).toContain('method: "DELETE"');
+        expect(projectManagement.text).toContain("associated rules and events");
 
         await request(app).get("/assets/src/server.js").expect(404);
         await request(app).get("/src/server.js").expect(404);

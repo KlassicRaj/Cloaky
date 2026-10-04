@@ -391,23 +391,7 @@
             currentProject = await window.dashboardApi.request(
                 `/api/projects/${encodeURIComponent(projectId)}`,
             );
-            document.title = `${currentProject.name} · Visitor Routing`;
-            document.getElementById("project-name").textContent = currentProject.name;
-            document.getElementById("project-key").textContent = currentProject.projectKey;
-            document.getElementById("project-id").textContent = currentProject.id;
-            const status = document.getElementById("project-enabled");
-            status.textContent = currentProject.enabled ? "Enabled" : "Disabled";
-            status.classList.toggle("disabled", !currentProject.enabled);
-
-            const origins = document.getElementById("project-origins");
-            origins.replaceChildren();
-            if (currentProject.allowedOrigins.length === 0) {
-                origins.append(makeElement("li", "", "None"));
-            } else {
-                currentProject.allowedOrigins.forEach((origin) => {
-                    origins.append(makeElement("li", "", origin));
-                });
-            }
+            renderProject(currentProject);
             projectStatusMessage.hidden = true;
             projectContent.hidden = false;
             await loadRules();
@@ -422,6 +406,26 @@
                         : "Could not load this project. Please try again.",
                 true,
             );
+        }
+    }
+
+    function renderProject(project) {
+        document.title = `${project.name} · Visitor Routing`;
+        document.getElementById("project-name").textContent = project.name;
+        document.getElementById("project-key").textContent = project.projectKey;
+        document.getElementById("project-id").textContent = project.id;
+        const status = document.getElementById("project-enabled");
+        status.textContent = project.enabled ? "Enabled" : "Disabled";
+        status.classList.toggle("disabled", !project.enabled);
+
+        const origins = document.getElementById("project-origins");
+        origins.replaceChildren();
+        if (project.allowedOrigins.length === 0) {
+            origins.append(makeElement("li", "", "None"));
+        } else {
+            project.allowedOrigins.forEach((origin) => {
+                origins.append(makeElement("li", "", origin));
+            });
         }
     }
 
@@ -455,6 +459,15 @@
     });
     actionInput.addEventListener("change", setActionControls);
     frequencyEnabledInput.addEventListener("change", setFrequencyControls);
+    window.projectManagement.createProjectManagement({
+        projectId,
+        getProject: () => currentProject,
+        setProject: (project) => { currentProject = project; },
+        renderProject,
+        dashboardApi: window.dashboardApi,
+        document,
+        window,
+    });
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();

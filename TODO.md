@@ -16,6 +16,8 @@
 - [x] Remove browser geolocation from supported product inputs
 - [x] Implement fullscreen prompt signaling and explicit-click SDK prompt
 - [x] Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission.
+- [x] Build SDK evaluation requests from the captured SDK script origin and document cross-origin integration
+- [x] Complete project management UI with owner-authorized editing and confirmed deletion
 
 ## Remaining
 
