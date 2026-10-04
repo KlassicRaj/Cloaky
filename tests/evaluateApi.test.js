@@ -61,6 +61,16 @@ describe("POST /api/v1/evaluate", () => {
             .expect(({ body }) => expect(body.error).toBe("validation_error"));
     });
 
+    it("rejects oversized JSON bodies with a safe client error", async () => {
+        const { app } = createTestApp();
+        const response = await request(app)
+            .post(`/api/v1/evaluate?projectKey=${projectKey}`)
+            .send({ unnecessary: "x".repeat(70 * 1024) })
+            .expect(413);
+
+        expect(response.body).toEqual({ error: "payload_too_large" });
+    });
+
     it("returns 200 with the EvaluationService decision", async () => {
         const { app, evaluationService } = createTestApp();
 

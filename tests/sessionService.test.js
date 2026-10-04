@@ -22,7 +22,7 @@ describe("sessionService", () => {
         const service = createSessionService({ secret: strongSecret });
         const token = service.createSession("user-id").token;
         const [payload, signature] = token.split(".");
-        const tampered = `${payload}.${signature.slice(0, -1)}${signature.endsWith("a") ? "b" : "a"}`;
+        const tampered = `${payload}.${signature[0] === "a" ? "b" : "a"}${signature.slice(1)}`;
 
         expect(service.verifySession(tampered)).toBeNull();
     });

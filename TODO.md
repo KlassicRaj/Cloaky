@@ -18,8 +18,14 @@
 - [x] Browser geolocation is intentionally out of MVP scope. Visitor location is determined server-side using GeoIP. The SDK does not request browser location permission.
 - [x] Build SDK evaluation requests from the captured SDK script origin and document cross-origin integration
 - [x] Complete project management UI with owner-authorized editing and confirmed deletion
+- [x] Add real-PostgreSQL/Redis integration tests for complete management and public evaluation flows
+- [x] Fail closed on unavailable login rate limiting without changing public evaluation failure behavior
+- [x] Replace the vulnerable development-only nodemon chain with Node's built-in watch mode
+- [x] Add reproducible local PostgreSQL/Redis evaluation load testing
+- [x] Add production Docker packaging, dependency health checks, secure configuration validation, and graceful shutdown
+- [x] Prepare Render deployment documentation and regression coverage for platform port/bind behavior
 
 ## Remaining
 
 - [ ] Events dashboard
-- [ ] Production hardening and load testing
+- [ ] Perform actual Render deployment after externally provisioning GeoLite2 and Render services

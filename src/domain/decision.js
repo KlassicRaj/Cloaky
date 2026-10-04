@@ -12,7 +12,7 @@ function normalizeString(value, fallback = null) {
 function createDecision(input = {}) {
     const decision = input && typeof input === "object" && !Array.isArray(input) ? input : {};
 
-    return {
+    const normalized = {
         matched: typeof decision.matched === "boolean" ? decision.matched : false,
         ruleId: normalizeString(decision.ruleId),
         action: ACTIONS.has(decision.action) ? decision.action : "none",
@@ -22,6 +22,12 @@ function createDecision(input = {}) {
             : "off",
         reason: normalizeString(decision.reason, "no_match"),
     };
+
+    if (typeof decision.triggered === "boolean") {
+        normalized.triggered = decision.triggered;
+    }
+
+    return normalized;
 }
 
 module.exports = { createDecision };

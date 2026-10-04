@@ -1,7 +1,8 @@
 const express = require("express");
 const env = require("./config/env");
+const db = require("./config/db");
 const redis = require("./config/redis");
-const healthRouter = require("./routes/health");
+const { createHealthRouter } = require("./routes/health");
 const { createEvaluateRouter } = require("./routes/evaluate");
 const { createRedirectRouter } = require("./routes/redirect");
 const sdkRouter = require("./routes/sdk");
@@ -32,6 +33,7 @@ const { createEventsRouter } = require("./routes/events");
 const { createDashboardRouter } = require("./routes/dashboard");
 const { createTestRulesRouter } = require("./routes/testRules");
 const { createRuleTestingService } = require("./services/ruleTestingService");
+const { registerShutdownHandlers } = require("./services/shutdownService");
 
 const eventLoggingService = createEventLoggingService({ eventRepository });
 const sessionService = createSessionService({ secret: env.SESSION_SECRET });
@@ -67,6 +69,8 @@ function createApp({
     cookieSecure,
     loginRateLimitMiddleware,
     rateLimitMiddleware,
+    healthDatabase = db,
+    healthRedisClient = redis,
 } = {}) {
     const app = express();
     const configuredEvaluationService = evaluationService ||
@@ -111,10 +115,14 @@ function createApp({
         visitorIdentityService,
         limit: 10,
         keyPrefix: "login_rate_limit",
+        failClosed: true,
     });
 
-    app.use(express.json());
-    app.use(healthRouter);
+    app.use(express.json({ limit: "64kb" }));
+    app.use(createHealthRouter({
+        database: healthDatabase,
+        redisClient: healthRedisClient,
+    }));
     app.use(createDashboardRouter());
     app.use("/api/auth", createAuthRouter({
         authService: configuredAuthService,
@@ -146,6 +154,10 @@ function createApp({
             return res.status(400).json({ error: "validation_error", details: [] });
         }
 
+        if (error?.type === "entity.too.large") {
+            return res.status(413).json({ error: "payload_too_large" });
+        }
+
         if (env.NODE_ENV === "development") {
             console.error("Request failed:", error);
         }
@@ -158,16 +170,20 @@ function createApp({
 
 const app = createApp();
 
-async function startServer() {
-    await geoIpService.initialize();
-    return app.listen(env.PORT, () => {
-        console.log(`Server running on port ${env.PORT}`);
+async function startServer({ port = env.PORT, geoIp = geoIpService } = {}) {
+    await geoIp.initialize();
+    return app.listen(port, "0.0.0.0", () => {
+        console.log(`Server running on port ${port}`);
     });
 }
 
 if (require.main === module) {
-    startServer().catch((error) => {
-        console.error("Server startup failed:", error);
+    startServer().then((server) => {
+        registerShutdownHandlers(server, { database: db, redisClient: redis });
+    }).catch(() => {
+        console.error("Server startup failed.");
+        void db.destroy();
+        redis.disconnect();
         process.exitCode = 1;
     });
 }

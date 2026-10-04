@@ -146,7 +146,7 @@ describe("authentication API", () => {
         const { app, sessionService, userRepository } = await createAuthTestApp();
         const token = sessionService.createSession(owner.id).token;
         const [payload, signature] = token.split(".");
-        const tampered = `${payload}.${signature.slice(0, -1)}${signature.endsWith("x") ? "y" : "x"}`;
+        const tampered = `${payload}.${signature[0] === "x" ? "y" : "x"}${signature.slice(1)}`;
 
         await request(app)
             .get(`/api/projects/${projectId}`)

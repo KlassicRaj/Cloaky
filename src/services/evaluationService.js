@@ -14,6 +14,7 @@ function noActionForMatch(ruleId, reason) {
         destinationUrl: null,
         fullscreenMode: "off",
         reason,
+        triggered: false,
     });
 }
 
@@ -95,7 +96,7 @@ function createEvaluationService({
         if (!configuration || !configuration.project || !Array.isArray(configuration.rules)) {
             const project = await projectRepository.findByProjectKey(projectKey);
             if (!project) {
-                return createDecision({ reason: "project_not_found" });
+                return createDecision({ reason: "project_not_found", triggered: false });
             }
 
             const rules = project.enabled === false
@@ -135,11 +136,11 @@ function createEvaluationService({
 
         const { project, rules } = configuration;
         if (!project) {
-            return createDecision({ reason: "project_not_found" });
+            return createDecision({ reason: "project_not_found", triggered: false });
         }
 
         if (project.enabled === false) {
-            const decision = createDecision({ reason: "project_disabled" });
+            const decision = createDecision({ reason: "project_disabled", triggered: false });
             scheduleEvaluationEvent(eventLoggingService, project.id, decision, null, false);
             return decision;
         }
@@ -169,13 +170,15 @@ function createEvaluationService({
 
         const decision = sanitizeDecision(await ruleEngine.evaluateRules(visitor, rules));
         if (!decision.matched) {
-            scheduleEvaluationEvent(eventLoggingService, project.id, decision, visitor, false);
-            return decision;
+            const result = createDecision({ ...decision, triggered: false });
+            scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+            return result;
         }
 
         if (decision.reason === "invalid_destination_url") {
-            scheduleEvaluationEvent(eventLoggingService, project.id, decision, visitor, false);
-            return decision;
+            const result = createDecision({ ...decision, triggered: false });
+            scheduleEvaluationEvent(eventLoggingService, project.id, result, visitor, false);
+            return result;
         }
 
         if (!decision.ruleId) {
@@ -212,14 +215,18 @@ function createEvaluationService({
         });
 
         if (frequencyResult?.triggered === true) {
+            const result = createDecision({
+                ...decision,
+                triggered: decision.action !== "none",
+            });
             scheduleEvaluationEvent(
                 eventLoggingService,
                 project.id,
-                decision,
+                result,
                 visitor,
-                decision.action !== "none",
+                result.triggered,
             );
-            return decision;
+            return result;
         }
 
         const result = noActionForMatch(

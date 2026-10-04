@@ -4,9 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "vitest run",
+    "test:integration": "vitest run tests/integration",
+    "load:test": "node scripts/load-test.js",
     "test:watch": "vitest",
     "db:migrate": "knex --knexfile knexfile.js migrate:latest",
     "db:rollback": "knex --knexfile knexfile.js migrate:rollback",
@@ -37,7 +39,6 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14",
     "supertest": "^7.3.0",
     "vitest": "^5.0.3"
   }

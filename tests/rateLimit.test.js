@@ -17,17 +17,21 @@ function createTestApp({
     clientIp = "203.0.113.10",
     keyPrefix = `${namespace}:${randomUUID()}`,
     redisClient = redis,
+    clientIpService: providedClientIpService,
+    visitorIdentityService: providedVisitorIdentityService,
+    failClosed = false,
 } = {}) {
-    const clientIpService = {
+    const clientIpService = providedClientIpService || {
         getClientIp: vi.fn().mockImplementation((req) => req.headers["x-test-client-ip"] || clientIp),
     };
     const limiter = createRateLimit({
         redisClient,
         clientIpService,
-        visitorIdentityService,
+        visitorIdentityService: providedVisitorIdentityService || visitorIdentityService,
         limit,
         windowSeconds,
         keyPrefix,
+        failClosed,
     });
     const app = express();
     app.post("/api/v1/evaluate", limiter, (req, res) => res.status(200).json({ allowed: true }));
@@ -140,6 +144,37 @@ describe("evaluation rate limit", () => {
         expect(consoleError).toHaveBeenCalledWith(
             "Rate limiter unavailable; allowing evaluation request.",
         );
+        consoleError.mockRestore();
+    });
+
+    it("fails closed with a generic service error when Redis is unavailable for login", async () => {
+        const redisClient = { eval: vi.fn().mockRejectedValue(new Error("private Redis connection detail")) };
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { app } = createTestApp({ limit: 1, redisClient, failClosed: true });
+
+        const response = await request(app).post("/api/v1/evaluate").expect(503);
+
+        expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+        expect(JSON.stringify(response.body)).not.toContain("private Redis");
+        expect(consoleError).toHaveBeenCalledWith("Rate limiter unavailable; rejecting request.");
+        consoleError.mockRestore();
+    });
+
+    it.each([
+        ["missing client IP", {
+            clientIpService: { getClientIp: vi.fn().mockResolvedValue(null) },
+        }],
+        ["visitor identity failure", {
+            visitorIdentityService: { createVisitorId: vi.fn().mockRejectedValue(new Error("private identity detail")) },
+        }],
+    ])("fails closed for login when %s", async (_case, options) => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { app } = createTestApp({ ...options, failClosed: true });
+
+        const response = await request(app).post("/api/v1/evaluate").expect(503);
+
+        expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+        expect(JSON.stringify(response.body)).not.toMatch(/private|203\.0\.113\./i);
         consoleError.mockRestore();
     });
 

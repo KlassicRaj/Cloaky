@@ -40,7 +40,45 @@ const envSchema = z.object({
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const environmentSchema = envSchema.superRefine((configuration, context) => {
+    if (configuration.NODE_ENV !== "production") {
+        return;
+    }
+
+    if (configuration.COOKIE_SECURE !== true) {
+        context.addIssue({
+            code: "custom",
+            path: ["COOKIE_SECURE"],
+            message: "Must be true in production",
+        });
+    }
+
+    if (Buffer.byteLength(configuration.IP_HASH_SECRET, "utf8") < 32) {
+        context.addIssue({
+            code: "custom",
+            path: ["IP_HASH_SECRET"],
+            message: "Must contain at least 32 bytes in production",
+        });
+    }
+
+    if (configuration.IP_HASH_SECRET === configuration.SESSION_SECRET) {
+        context.addIssue({
+            code: "custom",
+            path: ["IP_HASH_SECRET"],
+            message: "Must be distinct from SESSION_SECRET",
+        });
+    }
+
+    if (new URL(configuration.BASE_URL).protocol !== "https:") {
+        context.addIssue({
+            code: "custom",
+            path: ["BASE_URL"],
+            message: "Must use HTTPS in production",
+        });
+    }
+});
+
+const parsed = environmentSchema.safeParse(process.env);
 
 if (!parsed.success) {
     console.error("Invalid environment configuration:");

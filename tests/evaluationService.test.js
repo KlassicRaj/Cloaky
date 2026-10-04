@@ -265,6 +265,7 @@ describe("EvaluationService", () => {
             destinationUrl: null,
             fullscreenMode: "off",
             reason: "no_match",
+            triggered: false,
         };
         dependencies.ruleEngine.evaluateRules.mockReturnValue(noMatchDecision);
 
@@ -355,6 +356,7 @@ describe("EvaluationService", () => {
                 destinationUrl: null,
                 fullscreenMode: "off",
                 reason: "invalid_destination_url",
+                triggered: false,
             });
         expect(dependencies.frequencyService.checkAndRecord).not.toHaveBeenCalled();
     });
@@ -384,6 +386,7 @@ describe("EvaluationService", () => {
                     destinationUrl: null,
                     fullscreenMode: "off",
                     reason,
+                    triggered: false,
                 });
             expect(dependencies.eventLoggingService.logEvaluationEvent).toHaveBeenCalledWith(expect.objectContaining({
                 projectId: "project-1",

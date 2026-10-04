@@ -122,6 +122,7 @@ describe("createDecision", () => {
             destinationUrl: " https://example.com/path ",
             fullscreenMode: "prompt",
             reason: " rule_matched ",
+            triggered: true,
         })).toEqual({
             matched: true,
             ruleId: "rule-123",
@@ -129,6 +130,7 @@ describe("createDecision", () => {
             destinationUrl: "https://example.com/path",
             fullscreenMode: "prompt",
             reason: "rule_matched",
+            triggered: true,
         });
     });
 
