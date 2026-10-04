@@ -24,8 +24,11 @@
 - [x] Add reproducible local PostgreSQL/Redis evaluation load testing
 - [x] Add production Docker packaging, dependency health checks, secure configuration validation, and graceful shutdown
 - [x] Prepare Render deployment documentation and regression coverage for platform port/bind behavior
+- [x] Verify Render requirements against migrations, admin provisioning, Redis, GeoIP, cookies, health, and proxy trust
 
 ## Remaining
 
 - [ ] Events dashboard
 - [ ] Perform actual Render deployment after externally provisioning GeoLite2 and Render services
+- [ ] Confirm selected Render plan supports pre-deploy migration command and persistent GeoLite2 storage
+- [ ] Verify Render direct proxy peer address/range before setting TRUSTED_PROXIES

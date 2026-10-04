@@ -36,8 +36,11 @@ limits/frequency windows, but does not remove users, projects, rules, or events.
 - Configure the service pre-deploy command as `npm run db:migrate`. This runs
   Knex forward migrations once for a release, before the new version serves
   requests. Migrations are not executed on requests or ordinary app startup.
-  Do not run rollback automatically. Confirm that the selected Render plan
-  supports the pre-deploy command before relying on this release workflow.
+  Do not run rollback automatically. Confirm that the selected Render service
+  plan/UI supports a pre-deploy command and supplies `DATABASE_URL` to that
+  command. If not, use a one-time Render Shell command against the configured
+  web-service environment after PostgreSQL is available and before relying on
+  the app; do not put migrations into the normal start command.
 - Use the normal container stop signal and grace period so the application can
   stop accepting requests, finish active work, and close PostgreSQL/Redis.
 
@@ -46,27 +49,54 @@ limits/frequency windows, but does not remove users, projects, rules, or events.
 Set these through Render's environment/secret configuration. Do not commit
 credentials or generated secrets:
 
-| Variable | Requirement |
-| --- | --- |
-| `NODE_ENV` | `production` |
-| `PORT` | Supplied by Render; do not hardcode |
-| `DATABASE_URL` | Render PostgreSQL connection URL |
-| `REDIS_URL` | Render Key Value/Redis-compatible connection URL |
-| `ADMIN_USERNAME` | Initial admin username; required by application configuration |
-| `SESSION_SECRET` | Random secret of at least 32 bytes |
-| `IP_HASH_SECRET` | Separate random secret of at least 32 bytes |
-| `COOKIE_SECURE` | `true`; production validation rejects false |
-| `BASE_URL` | Final public `https://<service>.onrender.com` URL; not a redirect target |
-| `GEOIP_DATABASE_PATH` | Path to the externally supplied database file; may be empty if GeoIP is intentionally unavailable |
-| `TRUSTED_PROXIES` | Set only if the real proxy addresses/CIDRs are known and required; otherwise leave empty |
-| `EVENT_RETENTION_DAYS` | Optional; defaults to `30` |
-| `RATE_LIMIT_PER_MINUTE` | Optional; defaults to `60` |
-| `ADMIN_PASSWORD_HASH` | Needed only for one-time admin provisioning; remove from persistent web-service environment after provisioning if not otherwise needed |
+| Variable | Required in production? | Source / configuration |
+| --- | --- | --- |
+| `NODE_ENV` | Yes | Set manually to `production` |
+| `PORT` | Yes; provider-managed | Supplied by Render; do not set a fixed port |
+| `DATABASE_URL` | Yes | Render PostgreSQL connection URL |
+| `REDIS_URL` | Yes | Render Key Value/Redis-compatible connection URL |
+| `ADMIN_USERNAME` | Yes | Set the intended admin username before provisioning |
+| `ADMIN_PASSWORD_HASH` | Yes for provisioning only | Generate bcrypt hash locally; remove after provisioning |
+| `SESSION_SECRET` | Yes | Generate a unique random secret of at least 32 bytes |
+| `IP_HASH_SECRET` | Yes | Generate a separate random secret of at least 32 bytes |
+| `GEOIP_DATABASE_PATH` | Deployment-dependent | External `.mmdb` path if enabling GeoIP; otherwise may be empty |
+| `BASE_URL` | Yes | Set to the final public HTTPS Render service URL |
+| `COOKIE_SECURE` | Yes | Set to `true`; production validation rejects false |
+| `TRUSTED_PROXIES` | Deployment-dependent | Only set after verifying exact Render peer IP/CIDR values |
+| `EVENT_RETENTION_DAYS` | Choose intended value | Optional in schema; application default is `30` |
+| `RATE_LIMIT_PER_MINUTE` | Choose intended value | Optional in schema; application default is `60` |
 
 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
 `APP_PORT`, and `GEOIP_DATABASE_DIR` are local production-Compose inputs, not
 Render web-service settings. Do not set Render's URLs to Compose service names
 such as `postgres` or `redis`.
+
+### Generating secrets and admin credentials
+
+Generate `SESSION_SECRET` and `IP_HASH_SECRET` independently on a trusted
+local machine with Node's cryptographic random generator. Run the following
+command twice and use a different output each time:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+```
+
+Do not reuse development values. Paste the two independent values directly
+into Render's secret environment fields; do not save them in the repository.
+
+For initial admin provisioning, choose the production admin username and
+password, then generate a bcrypt hash locally with the project's `bcryptjs`
+dependency using cost 12. Supply the password through a local environment
+variable or another method that does not place it in shell history or command
+arguments, and print/copy only the resulting hash. For example, after setting
+`ADMIN_PASSWORD` securely in the local shell (not on the command line), run:
+
+```powershell
+node -e "require('bcryptjs').hash(process.env.ADMIN_PASSWORD, 12).then(console.log)"
+```
+
+Remove the local `ADMIN_PASSWORD` variable afterward. The bcrypt hash is
+temporary provisioning input, not a runtime credential.
 
 ## GeoLite2 City database
 
@@ -99,28 +129,62 @@ not add the Render hostname as a global allowed origin or use wildcard CORS.
 After deployment, enter each customer website origin through that project's
 allowed-origin configuration.
 
+## Trusted proxy and visitor IP
+
+The client-IP service reads `X-Forwarded-For`, `CF-Connecting-IP`, and
+`X-Real-IP` only when the direct socket peer matches an explicit IP or IPv4
+CIDR in `TRUSTED_PROXIES`. It does not use Express's blanket `trust proxy`
+setting. With `TRUSTED_PROXIES` empty, forwarded headers are ignored and the
+socket peer address is used.
+
+Do not set `TRUSTED_PROXIES=*` or guess a Render proxy range. Before enabling
+forwarded visitor IPs, establish the actual direct peer address/range used by
+the deployed Render Web Service from provider documentation/support and a
+carefully controlled deployment check. Enter only those exact trusted
+addresses/CIDRs. Until verified, leaving the setting empty is the conservative
+spoof-resistant choice, but visitor identity/rate limiting may then be based
+on the platform proxy peer rather than the end visitor; validate this behavior
+before production evaluation use. If Render does not provide a stable,
+documented trusted-proxy range suitable for this check, record the limitation
+and do not broaden trust to arbitrary senders.
+
 ## First deployment sequence
 
 1. Create the Render PostgreSQL service and keep its connection URL private.
 2. Create the Render Key Value service and obtain its connection URL.
 3. Confirm the selected web-service plan supports a persistent disk; attach
    one for GeoLite2 or explicitly choose to run without GeoIP.
-4. Create the Render Web Service from the repository using Docker.
-5. Configure the production environment variables and provider URLs above.
-6. Supply the GeoLite2 file through the approved external process and configure
+4. Create a Render Web Service connected to this Git repository; choose Docker
+   deployment and keep the repository's existing `Dockerfile` as the build
+   file. Do not override its Node start command.
+5. Configure `NODE_ENV`, `COOKIE_SECURE`, the eventual HTTPS `BASE_URL`, and
+   provider-generated `DATABASE_URL` and `REDIS_URL`. Add independently
+   generated `SESSION_SECRET` and `IP_HASH_SECRET`; do not put values in Git.
+6. Set `ADMIN_USERNAME` to the chosen production username. Create and retain
+   the password securely, generate its bcrypt hash locally, and configure
+   `ADMIN_PASSWORD_HASH` temporarily for initial provisioning.
+7. Configure `/health` as the health-check path and confirm the service exposes
+   the port supplied through Render's `PORT`.
+8. Supply the GeoLite2 file through the approved external process and configure
    its mounted path, if GeoIP is enabled.
-7. Configure the `npm run db:migrate` pre-deploy command.
-8. Deploy the service. **This sequence has not yet been executed.**
-9. Verify the Render health check and public `/health` response.
-10. Run `npm run admin:provision` once after migrations, with
-    `ADMIN_USERNAME` and a valid bcrypt `ADMIN_PASSWORD_HASH` available in the
-    Render service shell; remove the hash from persistent service settings
-    afterward.
-11. Log in to the dashboard.
-12. Create a project and enter its customer allowed origin(s).
-13. Create a rule and test its evaluation.
-14. Test a redirect rule using a controlled destination.
-15. Load the SDK from the Render service hostname and test evaluation from an
+9. Verify the selected Render plan/UI can run `npm run db:migrate` as a
+   pre-deploy command with the configured `DATABASE_URL`. If it cannot, arrange
+   a one-time Render Shell execution after the web-service environment is
+   configured and before relying on the app. Do not run migrations yet as part
+   of this preparation checklist.
+10. Deploy the Web Service. **This sequence has not yet been executed.**
+11. Verify the Render health check and public `/health` response.
+12. After migrations have succeeded, use the Web Service's Render Shell and
+    configured production environment to run `npm run admin:provision` once.
+    The provisioner connects through `DATABASE_URL`, validates the bcrypt hash,
+    refuses to overwrite an existing username, and prints no password/hash.
+13. Remove `ADMIN_PASSWORD_HASH` from persistent service environment
+    configuration after provisioning; retain `ADMIN_USERNAME`.
+14. Log in to the dashboard.
+15. Create a project and enter its customer allowed origin(s).
+16. Create a rule and test its evaluation.
+17. Test a redirect rule using a controlled destination.
+18. Load the SDK from the Render service hostname and test evaluation from an
     allowed customer origin.
 
 Do not consider the deployment complete until these steps, including the
